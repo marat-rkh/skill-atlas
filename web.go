@@ -26,7 +26,7 @@ func serve(listener net.Listener, stdout io.Writer) error {
 }
 
 // newWebHandler serves the start page at / and skill maps at /scan?repo=<github-repository-url>, built by scan.
-// An optional filter parameter limits the map to matching skills.
+// An optional filter parameter limits the map to matching skills, and group=on groups similar skills.
 func newWebHandler(scan func(githubRepo) (skillMap, error)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -48,21 +48,24 @@ func newWebHandler(scan func(githubRepo) (skillMap, error)) http.Handler {
 			renderPage(w, http.StatusBadGateway, pageData{Error: err.Error()})
 			return
 		}
-		renderPage(w, http.StatusOK, newMapPage(m, r.URL.Query().Get("filter")))
+		query := r.URL.Query()
+		renderPage(w, http.StatusOK, newMapPage(m, query.Get("filter"), query.Get("group") == "on"))
 	})
 	return mux
 }
 
 // pageData is what the page shows: the skill map if Summary is set, otherwise how to request one, and any Error.
 // Groups holds only the skills that match Filter; Total counts all skills of the map, Matches only the shown ones.
+// Grouping tells whether similar skills are grouped.
 type pageData struct {
-	Error   string
-	Summary string
-	Repo    string
-	Filter  string
-	Total   int
-	Matches int
-	Groups  []pageGroup
+	Error    string
+	Summary  string
+	Repo     string
+	Filter   string
+	Grouping bool
+	Total    int
+	Matches  int
+	Groups   []pageGroup
 }
 
 type pageGroup struct {
@@ -74,10 +77,10 @@ type pageSkill struct {
 	Name, Description string
 }
 
-func newMapPage(m skillMap, filter string) pageData {
-	page := pageData{Summary: m.summary(), Repo: m.repo.webURL(), Filter: strings.TrimSpace(filter)}
-	for _, group := range m.groups {
-		g := pageGroup{Label: group.label()}
+func newMapPage(m skillMap, filter string, grouping bool) pageData {
+	page := pageData{Summary: m.summary(), Repo: m.repo.webURL(), Filter: strings.TrimSpace(filter), Grouping: grouping}
+	for _, group := range m.groups(grouping) {
+		g := pageGroup{Label: group.label}
 		for _, s := range group.skills {
 			page.Total++
 			if s.matches(page.Filter) {
