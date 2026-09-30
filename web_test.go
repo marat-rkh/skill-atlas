@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -63,6 +64,8 @@ func assertInOrder(t *testing.T, body string, parts ...string) {
 
 const usageHint = "Open <code>/scan?repo=&lt;github-repository-url&gt;</code>"
 
+const filterForm = `<form action="/scan" method="get" role="search">`
+
 func TestStartPage(t *testing.T) {
 	response := get(t, newWebHandler((&fakeScanner{}).scan), "/")
 
@@ -105,7 +108,9 @@ func TestScanPageShowsMap(t *testing.T) {
 		"<li><strong>alpha</strong><p>Does alpha things.</p></li>",
 		"<li><strong>beta</strong><p>(no description)</p></li>",
 	)
-	for _, unexpected := range []string{"No SKILL.md files found.", usageHint, `class="error"`} {
+	assertInOrder(t, body, filterForm, `<input type="hidden" name="repo" value="https://github.com/JetBrains/kotlin">`,
+		`<input type="search" name="filter" value="">`)
+	for _, unexpected := range []string{"No SKILL.md files found.", "No skills match", `class="matches"`, usageHint, `class="error"`} {
 		if strings.Contains(body, unexpected) {
 			t.Errorf("page contains %q:\n%s", unexpected, body)
 		}
@@ -142,6 +147,122 @@ func TestScanPageWithoutSkills(t *testing.T) {
 		`<p class="summary">JetBrains/kotlin · master @ c823f9e · 0 skills</p>`,
 		"<p>No SKILL.md files found.</p>",
 	)
+}
+
+func TestScanPageFiltersSkills(t *testing.T) {
+	tests := []struct {
+		name, filter, matchCount string
+		shown, hidden            []string
+	}{
+		{"by name", "ALPHA", `1 of 3 skills matches "ALPHA"`,
+			[]string{"<h2>.claude/skills/</h2>", "<strong>alpha</strong>"},
+			[]string{"<h2>./</h2>", "<strong>root-skill</strong>", "<strong>beta</strong>"}},
+		{"by description", "the ROOT", `1 of 3 skills matches "the ROOT"`,
+			[]string{"<h2>./</h2>", "<strong>root-skill</strong>"},
+			[]string{"<h2>.claude/skills/</h2>", "<strong>alpha</strong>", "<strong>beta</strong>"}},
+		{"ignoring surrounding whitespace", "  a  ", `3 of 3 skills match "a"`,
+			[]string{"<strong>root-skill</strong>", "<strong>alpha</strong>", "<strong>beta</strong>"}, nil},
+		{"not by the placeholder of a missing description", "no description", `0 of 3 skills match "no description"`,
+			[]string{"<p>No skills match the filter.</p>"},
+			[]string{"<h2>", "<strong>"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(tt.filter)
+			response := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target)
+
+			if response.Code != http.StatusOK {
+				t.Errorf("status = %d; want 200", response.Code)
+			}
+			body := response.Body.String()
+			assertInOrder(t, body,
+				"<title>JetBrains/kotlin · master @ c823f9e · 3 skills · Skill Atlas</title>",
+				`<p class="summary">JetBrains/kotlin · master @ c823f9e · 3 skills</p>`,
+				filterForm,
+				`<input type="search" name="filter" value="`+strings.TrimSpace(tt.filter)+`">`,
+				`<p class="matches">`+strings.ReplaceAll(tt.matchCount, `"`, "&#34;")+"</p>",
+			)
+			assertInOrder(t, body, tt.shown...)
+			for _, hidden := range tt.hidden {
+				if strings.Contains(body, hidden) {
+					t.Errorf("page contains %q:\n%s", hidden, body)
+				}
+			}
+			if tt.matchCount[0] != '0' && strings.Contains(body, "No skills match") {
+				t.Errorf("page says no skills match:\n%s", body)
+			}
+		})
+	}
+}
+
+func TestScanPageWithEmptyFilterShowsWholeMap(t *testing.T) {
+	for _, filter := range []string{"", "%20%20"} {
+		target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + filter
+		body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+
+		assertInOrder(t, body, `<input type="search" name="filter" value="">`,
+			"<strong>root-skill</strong>", "<strong>alpha</strong>", "<strong>beta</strong>")
+		for _, unexpected := range []string{`class="matches"`, "No skills match"} {
+			if strings.Contains(body, unexpected) {
+				t.Errorf("GET %s: page contains %q:\n%s", target, unexpected, body)
+			}
+		}
+	}
+}
+
+func TestScanPageFilterWithoutSkills(t *testing.T) {
+	scanner := &fakeScanner{m: skillMap{repo: kotlin, branch: "master", commit: "c823f9e0123456789"}}
+	body := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin&filter=x").Body.String()
+
+	assertInOrder(t, body, filterForm, `<p class="matches">0 of 0 skills match &#34;x&#34;</p>`, "<p>No SKILL.md files found.</p>")
+	if strings.Contains(body, "No skills match") {
+		t.Errorf("page says no skills match:\n%s", body)
+	}
+}
+
+func TestScanPageFilterFormKeepsRepository(t *testing.T) {
+	// The form must submit the scanned repository, even if it was requested in another URL form.
+	for _, repo := range []string{"git@github.com:JetBrains/kotlin.git", "https://github.com/JetBrains/kotlin/tree/master/compiler"} {
+		target := "/scan?repo=" + url.QueryEscape(repo) + "&filter=alpha"
+		body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+		assertInOrder(t, body, filterForm,
+			`<input type="hidden" name="repo" value="https://github.com/JetBrains/kotlin">`,
+			`<input type="search" name="filter" value="alpha">`,
+			`<button type="submit">Filter</button>`,
+			"</form>",
+		)
+	}
+}
+
+func TestScanPageEscapesFilter(t *testing.T) {
+	target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(`"><script>alert(1)</script>`)
+	body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+
+	assertInOrder(t, body,
+		`<input type="search" name="filter" value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;">`,
+		`<p class="matches">0 of 3 skills match &#34;&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&#34;</p>`,
+	)
+	if strings.Contains(body, "<script>") {
+		t.Errorf("page contains an unescaped script tag:\n%s", body)
+	}
+}
+
+func TestMatchCount(t *testing.T) {
+	tests := []struct {
+		matches, total int
+		want           string
+	}{
+		{0, 0, `0 of 0 skills match "x"`},
+		{0, 1, `0 of 1 skill match "x"`},
+		{1, 1, `1 of 1 skill matches "x"`},
+		{1, 2, `1 of 2 skills matches "x"`},
+		{2, 6, `2 of 6 skills match "x"`},
+	}
+	for _, tt := range tests {
+		if got := (pageData{Filter: "x", Matches: tt.matches, Total: tt.total}).MatchCount(); got != tt.want {
+			t.Errorf("MatchCount() with %d of %d = %q; want %q", tt.matches, tt.total, got, tt.want)
+		}
+	}
 }
 
 func TestScanPageEscapesRepositoryContent(t *testing.T) {
@@ -219,6 +340,14 @@ func TestScanPageOfLocalRepository(t *testing.T) {
 		"<li><strong>debug</strong><p>(no description)</p></li>",
 		"<li><strong>review</strong><p>Reviews a pull request.</p></li>",
 	)
+
+	response = get(t, newWebHandler(scan), "/scan?repo=https://github.com/owner/repo&filter=pull")
+	body := response.Body.String()
+	assertInOrder(t, body, `<p class="matches">1 of 2 skills matches &#34;pull&#34;</p>`,
+		"<li><strong>review</strong><p>Reviews a pull request.</p></li>")
+	if strings.Contains(body, "<strong>debug</strong>") {
+		t.Errorf("filtered page contains the debug skill:\n%s", body)
+	}
 }
 
 func TestServe(t *testing.T) {

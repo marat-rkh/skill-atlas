@@ -29,6 +29,21 @@ repository, e.g. `http://127.0.0.1:8080/scan?repo=https://github.com/JetBrains/k
 The start page `/` explains how to do this. If the parameter is not a GitHub repository URL, or the repository cannot
 be analyzed, the page shows an error instead of the map.
 
+### Filter
+
+The map page has a filter field. Submitting it reloads the page with the text in an optional `filter` query parameter,
+e.g. `/scan?repo=https://github.com/JetBrains/kotlin&filter=test`, so a filtered map can be bookmarked or shared.
+The field shows the current filter text.
+
+- A skill matches if its name or description contains the filter text, ignoring case. Leading and trailing whitespace
+  in the filter is ignored.
+- Only matching skills are shown; groups with no matching skills are hidden.
+- The page shows how many of the repository's skills match, e.g. `2 of 6 skills match "test"`.
+- If no skills match, the page says so instead of showing groups.
+- An empty or missing filter shows the whole map.
+
+The filter applies to the web interface only; the CLI always prints the whole map.
+
 # Implementation details
 
 Discovered skills can be grouped thematically, but this is not required.
