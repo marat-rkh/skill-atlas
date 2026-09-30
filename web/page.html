@@ -19,8 +19,18 @@
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
 {{- if .Summary}}
 <p class="summary">{{.Summary}}</p>
-{{- if not .Groups}}
+<form action="/scan" method="get" role="search">
+  <input type="hidden" name="repo" value="{{.Repo}}">
+  <label>Filter <input type="search" name="filter" value="{{.Filter}}"></label>
+  <button type="submit">Filter</button>
+</form>
+{{- if .Filter}}
+<p class="matches">{{.MatchCount}}</p>
+{{- end}}
+{{- if not .Total}}
 <p>No SKILL.md files found.</p>
+{{- else if not .Groups}}
+<p>No skills match the filter.</p>
 {{- end}}
 {{- range .Groups}}
 <section>
