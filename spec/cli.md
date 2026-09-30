@@ -13,3 +13,8 @@ A map of available agent skills.
 # Implementation details
 
 Discovered skills can be grouped thematically, but this is not required.
+
+# Technologies
+
+- Go, standard library only.
+- The `git` command-line tool, used at runtime to fetch repositories.
