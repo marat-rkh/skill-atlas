@@ -1,0 +1,49 @@
+package main
+
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+// renderMap renders the skill map as a text tree for the terminal.
+func renderMap(m skillMap) string {
+	var b strings.Builder
+	b.WriteString(m.summary() + "\n")
+	if len(m.groups) == 0 {
+		b.WriteString("\nNo SKILL.md files found.\n")
+	}
+
+	for _, group := range m.groups {
+		b.WriteString("\n" + group.label() + "\n")
+		for i, s := range group.skills {
+			connector, indent := "├── ", "│   "
+			if i == len(group.skills)-1 {
+				connector, indent = "└── ", "    "
+			}
+			b.WriteString(connector + s.name + "\n")
+			for _, line := range wrap(s.shownDescription(), 96) {
+				b.WriteString(indent + line + "\n")
+			}
+		}
+	}
+	return b.String()
+}
+
+func wrap(text string, width int) []string {
+	var lines []string
+	line := ""
+	for _, word := range strings.Fields(text) {
+		if line != "" && utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += word
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
