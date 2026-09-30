@@ -2,7 +2,6 @@ package main
 
 import (
 	"cmp"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,30 +14,23 @@ type skill struct {
 	name, description, path string
 }
 
-// skillGroup holds skills that live side by side in the same directory, e.g. `.claude/skills`.
-type skillGroup struct {
-	directory string
-	skills    []skill
-}
-
-func loadSkillGroups(checkout *repoCheckout) ([]skillGroup, error) {
-	byDirectory := map[string][]skill{}
+// loadSkills reads the checkout's skills, sorted with compareSkills.
+func loadSkills(checkout *repoCheckout) ([]skill, error) {
+	skills := make([]skill, 0, len(checkout.skillFiles))
 	for _, file := range checkout.skillFiles {
 		content, err := checkout.read(file)
 		if err != nil {
 			return nil, err
 		}
-		s := parseSkill(parentDir(file), content)
-		byDirectory[parentDir(s.path)] = append(byDirectory[parentDir(s.path)], s)
+		skills = append(skills, parseSkill(parentDir(file), content))
 	}
+	slices.SortFunc(skills, compareSkills)
+	return skills, nil
+}
 
-	groups := make([]skillGroup, 0, len(byDirectory))
-	for _, directory := range slices.Sorted(maps.Keys(byDirectory)) {
-		skills := byDirectory[directory]
-		slices.SortStableFunc(skills, func(a, b skill) int { return cmp.Compare(a.name, b.name) })
-		groups = append(groups, skillGroup{directory: directory, skills: skills})
-	}
-	return groups, nil
+// compareSkills orders skills by name, and by path if names are equal.
+func compareSkills(a, b skill) int {
+	return cmp.Or(cmp.Compare(a.name, b.name), cmp.Compare(a.path, b.path))
 }
 
 func parseSkill(path, content string) skill {

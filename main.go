@@ -8,8 +8,9 @@ import (
 )
 
 const usage = `Usage:
-  skill-atlas <github-repository-url>   print the map of the repository's agent skills
-  skill-atlas serve                     start the web interface at http://` + serveAddress
+  skill-atlas <github-repository-url>           print the map of the repository's agent skills
+  skill-atlas --group <github-repository-url>   print the map with similar skills grouped
+  skill-atlas serve                             start the web interface at http://` + serveAddress
 
 func main() {
 	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
@@ -26,6 +27,10 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	grouping := len(args) == 2 && args[0] == "--group"
+	if grouping {
+		args = args[1:]
+	}
 	repo, ok := githubRepo{}, false
 	if len(args) == 1 {
 		repo, ok = parseGitHubRepo(args[0])
@@ -41,6 +46,6 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	fmt.Fprint(stdout, renderMap(m))
+	fmt.Fprint(stdout, renderMap(m, grouping))
 	return 0
 }

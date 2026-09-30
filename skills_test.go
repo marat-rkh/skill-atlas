@@ -140,11 +140,12 @@ func TestParseSkill(t *testing.T) {
 	}
 }
 
-func TestLoadSkillGroups(t *testing.T) {
+func TestLoadSkills(t *testing.T) {
 	files := map[string]string{
 		"SKILL.md":                  "---\nname: root\n---\n",
 		"skills/zeta/SKILL.md":      "---\nname: zeta\n---\n",
 		"skills/alpha/SKILL.md":     "---\nname: alpha\ndescription: First.\n---\n",
+		"skills/b/SKILL.md":         "---\nname: b\n---\n",
 		".claude/skills/b/SKILL.md": "---\nname: b\n---\n",
 		"top/SKILL.md":              "---\nname: top\n---\n",
 	}
@@ -155,27 +156,27 @@ func TestLoadSkillGroups(t *testing.T) {
 		skillFiles = append(skillFiles, path)
 	}
 
-	groups, err := loadSkillGroups(&repoCheckout{dir: dir, skillFiles: skillFiles})
+	skills, err := loadSkills(&repoCheckout{dir: dir, skillFiles: skillFiles})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []skillGroup{
-		{directory: "", skills: []skill{{name: "root", path: ""}, {name: "top", path: "top"}}},
-		{directory: ".claude/skills", skills: []skill{{name: "b", path: ".claude/skills/b"}}},
-		{directory: "skills", skills: []skill{
-			{name: "alpha", description: "First.", path: "skills/alpha"},
-			{name: "zeta", path: "skills/zeta"},
-		}},
+	want := []skill{
+		{name: "alpha", description: "First.", path: "skills/alpha"},
+		{name: "b", path: ".claude/skills/b"},
+		{name: "b", path: "skills/b"},
+		{name: "root", path: ""},
+		{name: "top", path: "top"},
+		{name: "zeta", path: "skills/zeta"},
 	}
-	if !reflect.DeepEqual(groups, want) {
-		t.Errorf("loadSkillGroups() =\n%+v\nwant\n%+v", groups, want)
+	if !reflect.DeepEqual(skills, want) {
+		t.Errorf("loadSkills() =\n%+v\nwant\n%+v", skills, want)
 	}
 }
 
-func TestLoadSkillGroupsReportsUnreadableFiles(t *testing.T) {
-	_, err := loadSkillGroups(&repoCheckout{dir: t.TempDir(), skillFiles: []string{"missing/SKILL.md"}})
+func TestLoadSkillsReportsUnreadableFiles(t *testing.T) {
+	_, err := loadSkills(&repoCheckout{dir: t.TempDir(), skillFiles: []string{"missing/SKILL.md"}})
 	if err == nil {
-		t.Fatal("loadSkillGroups() succeeded for a missing file")
+		t.Fatal("loadSkills() succeeded for a missing file")
 	}
 }
 

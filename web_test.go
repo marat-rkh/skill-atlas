@@ -19,12 +19,10 @@ var exampleMap = skillMap{
 	repo:   kotlin,
 	branch: "master",
 	commit: "c823f9e0123456789",
-	groups: []skillGroup{
-		{directory: "", skills: []skill{{name: "root-skill", description: "At the root."}}},
-		{directory: ".claude/skills", skills: []skill{
-			{name: "alpha", description: "Does alpha things.", path: ".claude/skills/alpha"},
-			{name: "beta", path: ".claude/skills/beta"},
-		}},
+	skills: []skill{
+		{name: "alpha-one", description: "Does alpha things.", path: ".claude/skills/alpha-one"},
+		{name: "alpha-two", path: ".claude/skills/alpha-two"},
+		{name: "root-skill", description: "At the root."},
 	},
 }
 
@@ -66,6 +64,9 @@ const usageHint = "Open <code>/scan?repo=&lt;github-repository-url&gt;</code>"
 
 const filterForm = `<form action="/scan" method="get" role="search">`
 
+// groupingCheckbox is the start of the grouping checkbox, which is in the filter form.
+const groupingCheckbox = `<label><input type="checkbox" name="group"`
+
 func TestStartPage(t *testing.T) {
 	response := get(t, newWebHandler((&fakeScanner{}).scan), "/")
 
@@ -102,19 +103,43 @@ func TestScanPageShowsMap(t *testing.T) {
 	assertInOrder(t, body,
 		"<title>JetBrains/kotlin · master @ c823f9e · 3 skills · Skill Atlas</title>",
 		`<p class="summary">JetBrains/kotlin · master @ c823f9e · 3 skills</p>`,
-		"<h2>./</h2>",
+		filterForm,
+		`<input type="hidden" name="repo" value="https://github.com/JetBrains/kotlin">`,
+		`<input type="search" name="filter" value="">`,
+		groupingCheckbox+` onchange="this.form.submit()"> Group similar skills</label>`,
+		"</form>",
+		"<section>\n  <ul>",
+		"<li><strong>alpha-one</strong><p>Does alpha things.</p></li>",
+		"<li><strong>alpha-two</strong><p>(no description)</p></li>",
 		"<li><strong>root-skill</strong><p>At the root.</p></li>",
-		"<h2>.claude/skills/</h2>",
-		"<li><strong>alpha</strong><p>Does alpha things.</p></li>",
-		"<li><strong>beta</strong><p>(no description)</p></li>",
+		"</ul>\n</section>",
 	)
-	assertInOrder(t, body, filterForm, `<input type="hidden" name="repo" value="https://github.com/JetBrains/kotlin">`,
-		`<input type="search" name="filter" value="">`)
-	for _, unexpected := range []string{"No SKILL.md files found.", "No skills match", `class="matches"`, usageHint, `class="error"`} {
+	for _, unexpected := range []string{"<h2>", "No SKILL.md files found.", "No skills match", `class="matches"`, usageHint, `class="error"`} {
 		if strings.Contains(body, unexpected) {
 			t.Errorf("page contains %q:\n%s", unexpected, body)
 		}
 	}
+}
+
+func TestScanPageGroupsSimilarSkills(t *testing.T) {
+	scanner := &fakeScanner{m: exampleMap}
+	response := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin&group=on")
+
+	if response.Code != http.StatusOK {
+		t.Errorf("status = %d; want 200", response.Code)
+	}
+	if !slices.Equal(scanner.requested, []githubRepo{kotlin}) {
+		t.Errorf("scanned %v; want [%v]", scanner.requested, kotlin)
+	}
+	assertInOrder(t, response.Body.String(),
+		`<p class="summary">JetBrains/kotlin · master @ c823f9e · 3 skills</p>`,
+		groupingCheckbox+` checked onchange="this.form.submit()"> Group similar skills</label>`,
+		"<h2>alpha</h2>",
+		"<li><strong>alpha-one</strong><p>Does alpha things.</p></li>",
+		"<li><strong>alpha-two</strong><p>(no description)</p></li>",
+		"<h2>Other</h2>",
+		"<li><strong>root-skill</strong><p>At the root.</p></li>",
+	)
 }
 
 func TestScanPageAcceptsRepositoryURLForms(t *testing.T) {
@@ -151,24 +176,28 @@ func TestScanPageWithoutSkills(t *testing.T) {
 
 func TestScanPageFiltersSkills(t *testing.T) {
 	tests := []struct {
-		name, filter, matchCount string
-		shown, hidden            []string
+		name, filter, group, matchCount string
+		shown, hidden                   []string
 	}{
-		{"by name", "ALPHA", `1 of 3 skills matches "ALPHA"`,
-			[]string{"<h2>.claude/skills/</h2>", "<strong>alpha</strong>"},
-			[]string{"<h2>./</h2>", "<strong>root-skill</strong>", "<strong>beta</strong>"}},
-		{"by description", "the ROOT", `1 of 3 skills matches "the ROOT"`,
-			[]string{"<h2>./</h2>", "<strong>root-skill</strong>"},
-			[]string{"<h2>.claude/skills/</h2>", "<strong>alpha</strong>", "<strong>beta</strong>"}},
-		{"ignoring surrounding whitespace", "  a  ", `3 of 3 skills match "a"`,
-			[]string{"<strong>root-skill</strong>", "<strong>alpha</strong>", "<strong>beta</strong>"}, nil},
-		{"not by the placeholder of a missing description", "no description", `0 of 3 skills match "no description"`,
+		// Groups are formed from the whole map, so alpha-one stays in the alpha group without alpha-two.
+		{"by name", "ONE", "&group=on", `1 of 3 skills matches "ONE"`,
+			[]string{"<h2>alpha</h2>", "<strong>alpha-one</strong>"},
+			[]string{"<h2>Other</h2>", "<strong>root-skill</strong>", "<strong>alpha-two</strong>"}},
+		{"by name without grouping", "ONE", "", `1 of 3 skills matches "ONE"`,
+			[]string{"<strong>alpha-one</strong>"},
+			[]string{"<h2>", "<strong>root-skill</strong>", "<strong>alpha-two</strong>"}},
+		{"by description", "the ROOT", "&group=on", `1 of 3 skills matches "the ROOT"`,
+			[]string{"<h2>Other</h2>", "<strong>root-skill</strong>"},
+			[]string{"<h2>alpha</h2>", "<strong>alpha-one</strong>", "<strong>alpha-two</strong>"}},
+		{"ignoring surrounding whitespace", "  a  ", "", `3 of 3 skills match "a"`,
+			[]string{"<strong>alpha-one</strong>", "<strong>alpha-two</strong>", "<strong>root-skill</strong>"}, nil},
+		{"not by the placeholder of a missing description", "no description", "&group=on", `0 of 3 skills match "no description"`,
 			[]string{"<p>No skills match the filter.</p>"},
 			[]string{"<h2>", "<strong>"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(tt.filter)
+			target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(tt.filter) + tt.group
 			response := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target)
 
 			if response.Code != http.StatusOK {
@@ -201,7 +230,7 @@ func TestScanPageWithEmptyFilterShowsWholeMap(t *testing.T) {
 		body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
 
 		assertInOrder(t, body, `<input type="search" name="filter" value="">`,
-			"<strong>root-skill</strong>", "<strong>alpha</strong>", "<strong>beta</strong>")
+			"<strong>alpha-one</strong>", "<strong>alpha-two</strong>", "<strong>root-skill</strong>")
 		for _, unexpected := range []string{`class="matches"`, "No skills match"} {
 			if strings.Contains(body, unexpected) {
 				t.Errorf("GET %s: page contains %q:\n%s", target, unexpected, body)
@@ -232,6 +261,17 @@ func TestScanPageFilterFormKeepsRepository(t *testing.T) {
 			"</form>",
 		)
 	}
+}
+
+func TestScanPageFormKeepsFilterAndGrouping(t *testing.T) {
+	body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan),
+		"/scan?repo=https://github.com/JetBrains/kotlin&filter=alpha&group=on").Body.String()
+	assertInOrder(t, body, filterForm,
+		`<input type="search" name="filter" value="alpha">`,
+		groupingCheckbox+` checked onchange="this.form.submit()"> Group similar skills</label>`,
+		"</form>",
+		"<h2>alpha</h2>",
+	)
 }
 
 func TestScanPageEscapesFilter(t *testing.T) {
@@ -266,14 +306,15 @@ func TestMatchCount(t *testing.T) {
 }
 
 func TestScanPageEscapesRepositoryContent(t *testing.T) {
-	scanner := &fakeScanner{m: skillMap{repo: kotlin, commit: "c823f9e", groups: []skillGroup{
-		{directory: "<i>dir</i>", skills: []skill{{name: "<b>name</b>", description: "<script>alert(1)</script>"}}},
+	scanner := &fakeScanner{m: skillMap{repo: kotlin, commit: "c823f9e", skills: []skill{
+		{name: "<b>name</b>-1", description: "<script>alert(1)</script>"},
+		{name: "<b>name</b>-2"},
 	}}}
-	body := get(t, newWebHandler(scanner.scan), "/scan?repo=github.com/JetBrains/kotlin").Body.String()
+	body := get(t, newWebHandler(scanner.scan), "/scan?repo=github.com/JetBrains/kotlin&group=on").Body.String()
 
 	assertInOrder(t, body,
-		"<h2>&lt;i&gt;dir&lt;/i&gt;/</h2>",
-		"<strong>&lt;b&gt;name&lt;/b&gt;</strong>",
+		"<h2>&lt;b&gt;name&lt;/b&gt;</h2>",
+		"<strong>&lt;b&gt;name&lt;/b&gt;-1</strong>",
 		"<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>",
 	)
 	if strings.Contains(body, "<script>") {
@@ -336,7 +377,7 @@ func TestScanPageOfLocalRepository(t *testing.T) {
 	}
 	assertInOrder(t, response.Body.String(),
 		`<p class="summary">owner/repo · main @ `+commit[:7]+` · 2 skills</p>`,
-		"<h2>.claude/skills/</h2>",
+		`<input type="hidden" name="repo" value="https://github.com/owner/repo">`,
 		"<li><strong>debug</strong><p>(no description)</p></li>",
 		"<li><strong>review</strong><p>Reviews a pull request.</p></li>",
 	)
@@ -405,5 +446,5 @@ func TestScanPageOfGitHubRepository(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d:\n%s", response.StatusCode, body)
 	}
-	assertInOrder(t, string(body), `<p class="summary">JetBrains/kotlin · `, "<h2>.claude/skills/</h2>", "<li><strong>")
+	assertInOrder(t, string(body), `<p class="summary">JetBrains/kotlin · `, filterForm, groupingCheckbox, "<li><strong>")
 }

@@ -15,6 +15,12 @@ func TestRunCLIPrintsUsageForInvalidArguments(t *testing.T) {
 		{"https://gitlab.com/owner/repo"},
 		{"https://github.com/owner/repo", "extra"},
 		{"serve", "extra"},
+		{"--group"},
+		{"--group", "not-a-url"},
+		{"--group", "serve"},
+		{"-group", "https://github.com/owner/repo"},
+		{"https://github.com/owner/repo", "--group"},
+		{"--group", "https://github.com/owner/repo", "extra"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := runCLI(args, &stdout, &stderr); code != 2 {
@@ -24,8 +30,9 @@ func TestRunCLIPrintsUsageForInvalidArguments(t *testing.T) {
 			t.Errorf("runCLI(%q) wrote to stdout: %q", args, stdout.String())
 		}
 		want := "Usage:\n" +
-			"  skill-atlas <github-repository-url>   print the map of the repository's agent skills\n" +
-			"  skill-atlas serve                     start the web interface at http://127.0.0.1:8080\n"
+			"  skill-atlas <github-repository-url>           print the map of the repository's agent skills\n" +
+			"  skill-atlas --group <github-repository-url>   print the map with similar skills grouped\n" +
+			"  skill-atlas serve                             start the web interface at http://127.0.0.1:8080\n"
 		if stderr.String() != want {
 			t.Errorf("runCLI(%q) stderr = %q; want %q", args, stderr.String(), want)
 		}
@@ -51,19 +58,28 @@ func TestRunCLIMapsGitHubRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip("needs access to github.com")
 	}
-	var stdout, stderr bytes.Buffer
-	if code := runCLI([]string{"https://github.com/JetBrains/kotlin"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("runCLI() = %d; stderr:\n%s", code, stderr.String())
-	}
-	if want := "Analyzing https://github.com/JetBrains/kotlin ...\n"; stderr.String() != want {
-		t.Errorf("stderr = %q; want %q", stderr.String(), want)
-	}
 	header := regexp.MustCompile(`^JetBrains/kotlin · \S+ @ [0-9a-f]{7} · [1-9]\d* skills?\n`)
-	if !header.MatchString(stdout.String()) {
-		t.Errorf("stdout does not start with a header listing skills:\n%s", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "\n.claude/skills/\n") {
-		t.Errorf("stdout has no .claude/skills/ group:\n%s", stdout.String())
+	// Every line after the header is blank, part of the skill tree, or (only with grouping) a group label.
+	groupLabel := regexp.MustCompile(`\n[^├└│ \n]`)
+	for _, grouping := range []bool{false, true} {
+		args := []string{"https://github.com/JetBrains/kotlin"}
+		if grouping {
+			args = append([]string{"--group"}, args...)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runCLI(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("runCLI(%q) = %d; stderr:\n%s", args, code, stderr.String())
+		}
+		if want := "Analyzing https://github.com/JetBrains/kotlin ...\n"; stderr.String() != want {
+			t.Errorf("runCLI(%q) stderr = %q; want %q", args, stderr.String(), want)
+		}
+		if !header.MatchString(stdout.String()) {
+			t.Errorf("runCLI(%q) stdout does not start with a header listing skills:\n%s", args, stdout.String())
+		}
+		body := header.ReplaceAllString(stdout.String(), "")
+		if hasLabels := groupLabel.MatchString(body); hasLabels != grouping {
+			t.Errorf("runCLI(%q) stdout has group labels: %v; want %v:\n%s", args, hasLabels, grouping, stdout.String())
+		}
 	}
 }
 

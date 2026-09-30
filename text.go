@@ -5,16 +5,19 @@ import (
 	"unicode/utf8"
 )
 
-// renderMap renders the skill map as a text tree for the terminal.
-func renderMap(m skillMap) string {
+// renderMap renders the skill map as a text tree for the terminal, with similar skills grouped if grouping is set.
+func renderMap(m skillMap, grouping bool) string {
 	var b strings.Builder
 	b.WriteString(m.summary() + "\n")
-	if len(m.groups) == 0 {
+	if len(m.skills) == 0 {
 		b.WriteString("\nNo SKILL.md files found.\n")
 	}
 
-	for _, group := range m.groups {
-		b.WriteString("\n" + group.label() + "\n")
+	for _, group := range m.groups(grouping) {
+		b.WriteString("\n")
+		if group.label != "" {
+			b.WriteString(group.label + "\n")
+		}
 		for i, s := range group.skills {
 			connector, indent := "├── ", "│   "
 			if i == len(group.skills)-1 {
