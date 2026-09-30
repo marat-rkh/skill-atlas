@@ -1,3 +1,8 @@
+# General guidelines
+
+Read `.agents/memory` subfolder for history of activity in this project.
+Also update it after each logical block of work, or session is finished.
+
 # Definition of 'Done'
 
 - Each part of the spec should be covered with tests. Tests should pass locally.
