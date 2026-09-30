@@ -4,6 +4,10 @@
 *.test
 *.out
 
+### Demo recording ###
+/demo/node_modules/
+/demo/out/
+
 ### VS Code ###
 .vscode/
 

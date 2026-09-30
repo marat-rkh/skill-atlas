@@ -1,0 +1,8 @@
+{
+  "name": "skill-atlas-demo",
+  "private": true,
+  "description": "Records the skill-atlas demo video, see record.sh",
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}
