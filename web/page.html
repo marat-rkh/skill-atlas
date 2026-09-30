@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{with .Summary}}{{.}} · {{end}}Skill Atlas</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
+    h2 { font-family: ui-monospace, monospace; font-size: 1.1rem; margin-top: 2rem; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid #ccc; }
+    li p { margin: 0.25rem 0 0; }
+    code, .summary { font-family: ui-monospace, monospace; }
+    .error { color: #b00020; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<h1>Skill Atlas</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{- if .Summary}}
+<p class="summary">{{.Summary}}</p>
+{{- if not .Groups}}
+<p>No SKILL.md files found.</p>
+{{- end}}
+{{- range .Groups}}
+<section>
+  <h2>{{.Label}}</h2>
+  <ul>
+  {{- range .Skills}}
+    <li><strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+  {{- end}}
+  </ul>
+</section>
+{{- end}}
+{{- else}}
+<p>Open <code>/scan?repo=&lt;github-repository-url&gt;</code> to see the map of a repository's agent skills, for example
+<a href="/scan?repo=https://github.com/JetBrains/kotlin">/scan?repo=https://github.com/JetBrains/kotlin</a>.</p>
+{{- end}}
+</body>
+</html>
