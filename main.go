@@ -3,30 +3,37 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
 )
 
 func main() {
-	repo, ok := githubRepo{}, false
-	if len(os.Args) == 2 {
-		repo, ok = parseGitHubRepo(os.Args[1])
-	}
-	if !ok {
-		fmt.Fprintln(os.Stderr, "Usage: skill-atlas <github-repository-url>")
-		os.Exit(2)
-	}
-
-	fmt.Fprintf(os.Stderr, "Analyzing %s ...\n", repo.webURL())
-	if err := run(repo); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(repo githubRepo) error {
-	checkout, err := checkoutSkillFiles(repo)
+// runCLI runs the tool with the given arguments and returns the process exit code.
+func runCLI(args []string, stdout, stderr io.Writer) int {
+	repo, ok := githubRepo{}, false
+	if len(args) == 1 {
+		repo, ok = parseGitHubRepo(args[0])
+	}
+	if !ok {
+		fmt.Fprintln(stderr, "Usage: skill-atlas <github-repository-url>")
+		return 2
+	}
+
+	fmt.Fprintf(stderr, "Analyzing %s ...\n", repo.webURL())
+	if err := analyze(repo, stdout); err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func analyze(repo githubRepo, stdout io.Writer) error {
+	checkout, err := checkoutSkillFiles(repo.cloneURL())
 	if err != nil {
 		return err
 	}
@@ -36,7 +43,7 @@ func run(repo githubRepo) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(renderMap(repo, checkout, groups))
+	fmt.Fprint(stdout, renderMap(repo, checkout, groups))
 	return nil
 }
 

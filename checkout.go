@@ -29,9 +29,9 @@ func (c *repoCheckout) close() {
 	os.RemoveAll(c.dir)
 }
 
-// checkoutSkillFiles fetches the latest commit of the default branch without file contents, finds every SKILL.md
-// in its tree, and then downloads just those files. This keeps huge repositories cheap to analyze.
-func checkoutSkillFiles(repo githubRepo) (_ *repoCheckout, err error) {
+// checkoutSkillFiles fetches the latest commit of the remote's default branch without file contents, finds every
+// SKILL.md in its tree, and then downloads just those files. This keeps huge repositories cheap to analyze.
+func checkoutSkillFiles(remote string) (_ *repoCheckout, err error) {
 	dir, err := os.MkdirTemp("", "skill-atlas-")
 	if err != nil {
 		return nil, err
@@ -46,12 +46,12 @@ func checkoutSkillFiles(repo githubRepo) (_ *repoCheckout, err error) {
 	if _, err = git("init", "-q"); err != nil {
 		return nil, err
 	}
-	if _, err = git("remote", "add", "origin", repo.cloneURL()); err != nil {
+	if _, err = git("remote", "add", "origin", remote); err != nil {
 		return nil, err
 	}
 	head, err := git("ls-remote", "--symref", "origin", "HEAD")
 	if err != nil {
-		return nil, fmt.Errorf("cannot access %s (repository not found or private)\n%w", repo.webURL(), err)
+		return nil, fmt.Errorf("cannot access %s (repository not found or private)\n%w", strings.TrimSuffix(remote, ".git"), err)
 	}
 	branch := ""
 	for _, line := range strings.Split(head, "\n") {
