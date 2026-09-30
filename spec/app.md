@@ -11,6 +11,12 @@ Any GitHub repository URL.
 
 A map of available agent skills.
 
+By default, the map is a single list of all skills, sorted by name. Grouping similar skills is optional and off by
+default. When it is enabled, skills whose names start with the same word (the part before the first `-`) form a group.
+The group is labeled with the leading words that all its names share, e.g. `analysis-api` for
+`analysis-api-create-cherry-pick-issue` and `analysis-api-mark-internal-apis`. Groups are sorted by label and skills
+within a group by name. Skills that share their first word with no other skill are listed last, under "Other".
+
 # Presentation
 
 Both presentation options show the same map; they differ only in how it is displayed.
@@ -18,6 +24,7 @@ Both presentation options show the same map; they differ only in how it is displ
 ## CLI
 
 `skill-atlas <github-repository-url>` prints the map to the terminal.
+`skill-atlas --group <github-repository-url>` prints it with grouping enabled.
 
 ## Web interface
 
@@ -44,9 +51,12 @@ The field shows the current filter text.
 
 The filter applies to the web interface only; the CLI always prints the whole map.
 
-# Implementation details
+### Grouping
 
-Discovered skills can be grouped thematically, but this is not required.
+The map page has a "Group similar skills" checkbox, unchecked by default. Checking it shows the map with grouping
+enabled; unchecking it shows the single list again. The choice is kept in the page URL as `&group=on`, so a grouped map
+can be opened directly, e.g. `http://127.0.0.1:8080/scan?repo=https://github.com/JetBrains/kotlin&group=on`.
+Grouping and the filter can be combined: changing one keeps the other.
 
 # Technologies
 
