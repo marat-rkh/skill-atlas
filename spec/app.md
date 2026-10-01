@@ -58,6 +58,24 @@ enabled; unchecking it shows the single list again. The choice is kept in the pa
 can be opened directly, e.g. `http://127.0.0.1:8080/scan?repo=https://github.com/JetBrains/kotlin&group=on`.
 Grouping and the filter can be combined: changing one keeps the other.
 
+### Stars
+
+Each skill on the map page has a star button: an empty star (☆) stars the skill, and a filled one (★) unstars it.
+Clicking it reloads the page with the same filter and grouping.
+
+- Starred skills are shown first. Without grouping, they lead the list; with grouping, they form a "Starred" group
+  before all other groups. Starred skills and the other skills are each sorted by name.
+- Groups are formed from all skills, so starring a skill does not change the other groups: starring
+  `analysis-api-mark-internal-apis` leaves `analysis-api-create-cherry-pick-issue` in the `analysis-api` group.
+- The filter applies to starred skills too, and a "Starred" group with no matching skills is hidden.
+- A star belongs to a skill directory in a repository, so skills with the same name in different directories are
+  starred separately. Repository owners and names are compared ignoring case, as on GitHub.
+- Stars are saved in `skill-atlas/stars.json` in the user's configuration directory (e.g. `~/.config` on Linux,
+  `~/Library/Application Support` on macOS), so they are kept when the server restarts.
+- Other websites cannot change stars: the server rejects star requests sent from their pages.
+
+Stars apply to the web interface only; the CLI always prints the map without them.
+
 # Technologies
 
 - Go, standard library only.
