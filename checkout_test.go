@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCheckoutSkillFiles(t *testing.T) {
@@ -83,6 +85,32 @@ func TestCheckoutSkillFilesReportsInaccessibleRepository(t *testing.T) {
 	want := "cannot access " + strings.TrimSuffix(remote, ".git") + " (repository not found or private)"
 	if !strings.HasPrefix(err.Error(), want) {
 		t.Errorf("error = %q; want prefix %q", err, want)
+	}
+}
+
+func TestCheckoutSkillFilesGivesUpOnStalledRemote(t *testing.T) {
+	// The kernel accepts connections to the listener, but nothing ever responds, like a stalled connection to GitHub.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	defer func(timeout time.Duration) { gitTimeout = timeout }(gitTimeout)
+	gitTimeout = time.Second
+	remote := "http://" + listener.Addr().String() + "/owner/repo.git"
+
+	start := time.Now()
+	checkout, err := checkoutSkillFiles(remote)
+	if err == nil {
+		checkout.close()
+		t.Fatal("checkoutSkillFiles() succeeded for a stalled remote")
+	}
+	want := "cannot access http://" + listener.Addr().String() + "/owner/repo\ngit ls-remote timed out after 1s"
+	if !errors.Is(err, errGitTimeout) || err.Error() != want {
+		t.Errorf("error = %q; want %q", err, want)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("checkoutSkillFiles() returned after %v; want soon after the timeout of 1s", elapsed)
 	}
 }
 

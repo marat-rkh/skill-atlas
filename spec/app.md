@@ -32,6 +32,8 @@ repository name ignoring case. With grouping enabled, skills are grouped within 
 - If some repositories cannot be analyzed, the map of the others is still shown, along with an error for each
   repository that failed. If the organization cannot be found or its repositories cannot be listed, an error is shown
   instead of the map.
+- A step of analyzing a repository that takes more than 5 minutes, e.g. because the connection to GitHub stalled, fails
+  with an error, so that a single repository cannot hold up the map of the others.
 - Without authentication, the GitHub API allows 60 requests per hour, and each request lists up to 100 repositories.
   If the `GITHUB_TOKEN` environment variable is set, the requests are authenticated with it, which raises the limit.
   When the limit is exceeded, the error says when to try again.
