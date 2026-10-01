@@ -142,6 +142,10 @@ func TestPrintOrgMapReportsFailedRepositories(t *testing.T) {
 	}
 }
 
+// maxFailedRepos is how many repositories of an organization the end-to-end tests allow to fail. Fetching one of
+// dozens of repositories from github.com fails now and then, and that must not fail the tests if the others are mapped.
+const maxFailedRepos = 3
+
 func TestRunCLIMapsGitHubOrganization(t *testing.T) {
 	if testing.Short() {
 		t.Skip("needs access to github.com")
@@ -149,11 +153,19 @@ func TestRunCLIMapsGitHubOrganization(t *testing.T) {
 	// anthropics has a few dozen repositories, some of them with skills, and an empty one.
 	var stdout, stderr bytes.Buffer
 	args := []string{"https://github.com/anthropics"}
-	if code := runCLI(args, &stdout, &stderr); code != 0 {
-		t.Fatalf("runCLI(%q) = %d; stderr:\n%s", args, code, stderr.String())
+	code := runCLI(args, &stdout, &stderr)
+	failures, ok := strings.CutPrefix(stderr.String(), "Analyzing https://github.com/anthropics ...\n")
+	if !ok || failures != "" && !strings.HasPrefix(failures, "error: anthropics/") {
+		t.Fatalf("runCLI(%q) = %d; stderr:\n%s\nwant the progress line and errors for repositories", args, code, stderr.String())
 	}
-	if want := "Analyzing https://github.com/anthropics ...\n"; stderr.String() != want {
-		t.Errorf("stderr = %q; want %q", stderr.String(), want)
+	failed := strings.Count("\n"+failures, "\nerror: anthropics/")
+	wantCode := 0
+	if failed > 0 {
+		wantCode = 1
+		t.Logf("%d repositories could not be analyzed:\n%s", failed, failures)
+	}
+	if code != wantCode || failed > maxFailedRepos {
+		t.Errorf("runCLI(%q) = %d with %d failed repositories; want %d and at most %d failed", args, code, failed, wantCode, maxFailedRepos)
 	}
 	header := regexp.MustCompile(`^anthropics · [1-9]\d* repositories · [1-9]\d* with skills · [1-9]\d* skills\n\n`)
 	repo := regexp.MustCompile(`(?m)^anthropics/skills · \S+ @ [0-9a-f]{7} · [1-9]\d* skills?\n\n[├└]── `)

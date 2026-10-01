@@ -757,7 +757,12 @@ func TestScanPageOfGitHubOrganization(t *testing.T) {
 	}
 	assertInOrder(t, string(body), `<p class="summary">anthropics · `, filterForm, groupingCheckbox,
 		`<section class="repo">`+"\n  <h2>anthropics/", "<li><strong>")
-	if strings.Contains(string(body), `class="error"`) {
-		t.Errorf("page reports errors:\n%s", body)
+	failed := strings.Count(string(body), `<p class="error">anthropics/`)
+	if failed > 0 {
+		t.Logf("%d repositories could not be analyzed", failed)
+	}
+	if shown := strings.Count(string(body), `class="error"`); shown != failed || failed > maxFailedRepos {
+		t.Errorf("page reports %d errors, %d of them for repositories; want at most %d, all for repositories:\n%s",
+			shown, failed, maxFailedRepos, body)
 	}
 }
