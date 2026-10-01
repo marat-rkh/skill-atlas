@@ -13,7 +13,7 @@ func renderMap(m skillMap, grouping bool) string {
 		b.WriteString("\nNo SKILL.md files found.\n")
 	}
 
-	for _, group := range m.groups(grouping) {
+	for _, group := range m.groups(grouping, nil) {
 		b.WriteString("\n")
 		if group.label != "" {
 			b.WriteString(group.label + "\n")

@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"net"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunCLIPrintsUsageForInvalidArguments(t *testing.T) {
@@ -51,6 +54,47 @@ func TestRunCLIServeReportsUnavailableAddress(t *testing.T) {
 	}
 	if want := "error: listen tcp " + serveAddress + ": "; !strings.HasPrefix(stderr.String(), want) {
 		t.Errorf("stderr = %q; want prefix %q", stderr.String(), want)
+	}
+}
+
+func TestRunCLIServeReportsUnreadableStars(t *testing.T) {
+	path := filepath.Join(useTempConfigDir(t), "skill-atlas", "stars.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// `serve` reads the stars once it listens, so the address must be free.
+	listener, err := net.Listen("tcp", serveAddress)
+	if err != nil {
+		t.Skipf("%s is in use: %v", serveAddress, err)
+	}
+	listener.Close()
+
+	var stdout, stderr bytes.Buffer
+	exited := make(chan int)
+	go func() { exited <- runCLI([]string{"serve"}, &stdout, &stderr) }()
+	select {
+	case code := <-exited:
+		if code != 1 {
+			t.Errorf("runCLI(serve) = %d; want 1", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("runCLI(serve) is still serving")
+	}
+	if want := "error: cannot read stars from " + path + ": "; !strings.HasPrefix(stderr.String(), want) {
+		t.Errorf("stderr = %q; want prefix %q", stderr.String(), want)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q; want nothing", stdout.String())
+	}
+	// The address is free again.
+	listener, err = net.Listen("tcp", serveAddress)
+	if err != nil {
+		t.Errorf("serve did not stop listening: %v", err)
+	} else {
+		listener.Close()
 	}
 }
 
