@@ -1,6 +1,6 @@
 # Review fixes and a demo branch for organization maps (PR #7)
 
-- **When:** 2026-10-01, 09:48–10:15
+- **When:** 2026-10-01, 09:48–10:50
 - **Where:** a fresh cloud machine (Linux), on the `organizations` branch, and `organizations-demo` for the video
 - **Transcript:** `5a53ce71-7d3c-4f69-aace-0e4b338985fb`
 - **Result:** commits `2941b32`, `01aa6cd` and `864389f` on PR #7, a reply in each review thread, the
@@ -23,6 +23,17 @@
    failures; the CLI took 42 s, and the scan before the web part 38 s. At CRF 18 the video was 52 MB, over GitHub's
    recommended 50 MB, so it was joined again at CRF 23 (31 MB, no visible difference). It was pushed to
    `organizations-demo` as `demo/skill-atlas-demo.mp4`, and a PR comment links to it.
+
+3. **Merge of `main` (10:20–10:50),** at the user's request, since the PR conflicted with PR #6 (stars). Merged
+   rather than rebased, so nothing was force-pushed and the review threads keep their commits (`7466620`):
+   - Organization maps got stars too. Stars still belong to repositories, so each repository section lists its starred
+     skills first ("Starred" group with grouping) and has its own star form, `stars-1`, `stars-2`, ..., numbered by
+     the repositories shown. The form also posts `org`, and `POST /star` then redirects back to the organization's map.
+     The repository page's markup is unchanged; a shared `skill` template renders the button on both pages.
+   - Tests build handlers through `fakeScanner.handler(stars)`. `listedSkillIn(form, ...)` generalizes `listedSkill`.
+   - The demo shows the stars scenes of PR #6, then the organization scenes, then a star clicked in the kotlin section
+     of the JetBrains map. Re-recorded (3:04, 39 MB at CRF 23) and pushed to `organizations-demo` by merging, not
+     rewriting, that branch. CI went green on the merge, and the PR became mergeable.
 
 ## Findings
 
@@ -48,9 +59,13 @@
   export GITHUB_TOKEN=$(gh auth token)
   ```
 
+- `gh pr checks` reports "no checks" here even when runs exist; use `gh run list --branch <branch>` and
+  `gh run watch`.
+
 ## Left open
 
-- The conflicts with `main`, and then a green CI run.
-- The PR description doesn't mention the review fixes yet, and still says the video is only attached to the agent
-  session.
+- The PR description doesn't mention the review fixes, the merge or stars on organization maps, and still says the
+  video is only attached to the agent session.
+- A star click on the map of an organization with failed repositories analyzes the organization again, since such maps
+  are not cached.
 - No `go test -race` run: there is no C compiler on this machine.
