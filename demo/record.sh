@@ -2,7 +2,9 @@
 # Records the demo video: the CLI with VHS (cli.tape), the web interface with Playwright (web.mjs), joined with ffmpeg.
 #
 # Usage: demo/record.sh [output.mp4]    (default: demo/out/skill-atlas-demo.mp4)
-# Needs: go, vhs and ffmpeg (`brew install vhs` brings both), node, and Google Chrome. Port 8080 must be free.
+# Needs: go, vhs and ffmpeg (`brew install vhs` brings both), node, and Google Chrome (or another Chrome at CHROME_PATH).
+# Port 8080 must be free. The demo lists the JetBrains repositories twice with the GitHub API, which allows 60 requests
+# per hour without authentication; set GITHUB_TOKEN if that is not enough.
 set -euo pipefail
 
 demo=$(cd "$(dirname "$0")" && pwd)

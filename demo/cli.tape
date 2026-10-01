@@ -10,7 +10,7 @@ Set TypingSpeed 35ms
 Set Theme "Catppuccin Mocha"
 
 Sleep 500ms
-Type "# skill-atlas maps the agent skills of any GitHub repository"
+Type "# skill-atlas maps the agent skills of any GitHub repository or organization"
 Enter
 Sleep 800ms
 Type "skill-atlas"
@@ -40,7 +40,34 @@ Wait@60s
 Sleep 7s
 
 Ctrl+L
-Type "# 3. The web interface shows the same map in a browser"
+Type "# 3. An organization URL maps all of the organization's repositories, except forks"
+Enter
+Sleep 600ms
+Type "time skill-atlas https://github.com/JetBrains > out/jetbrains.txt"
+Sleep 400ms
+Enter
+Sleep 3s
+# Analyzing hundreds of repositories takes a while, so the wait is cut; `time` shows how long it took.
+Hide
+Wait@5m
+Show
+Sleep 3s
+Type "head -n 32 out/jetbrains.txt"
+Sleep 400ms
+Enter
+Sleep 7s
+
+Ctrl+L
+Type "# The map of an organization has a section for each repository with skills"
+Enter
+Sleep 600ms
+Type "grep '^JetBrains' out/jetbrains.txt"
+Sleep 400ms
+Enter
+Sleep 7s
+
+Ctrl+L
+Type "# 4. The web interface shows the same maps in a browser"
 Enter
 Sleep 600ms
 Type "skill-atlas serve"

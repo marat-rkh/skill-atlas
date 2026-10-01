@@ -1,10 +1,18 @@
 // Web part of the skill-atlas demo. Run through record.sh, which starts `skill-atlas serve`. Prints the video's path.
+// Uses the installed Google Chrome, or the browser at CHROME_PATH if it is set.
 import { chromium } from 'playwright';
 
 const base = 'http://127.0.0.1:8080';
 const repo = 'https://github.com/openai/skills';
+const org = 'https://github.com/JetBrains';
 
-const browser = await chromium.launch({ channel: 'chrome' });
+// Analyzing an organization takes a while, so its map is built before recording; the server keeps it for 5 minutes.
+const warmStart = Date.now();
+const warm = await fetch(`${base}/scan?org=${org}`);
+if (!warm.ok) throw new Error(`analyzing ${org} failed: ${warm.status}`);
+const warmSeconds = Math.round((Date.now() - warmStart) / 1000);
+
+const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' });
 const context = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
   recordVideo: { dir: 'out/web-video', size: { width: 1920, height: 1080 } },
@@ -108,6 +116,40 @@ await page.waitForURL((url) => url.searchParams.get('filter') === '');
 await pause(2500);
 await scroll(3000, 100);
 await pause(1000);
+await scrollToTop();
+await pause(3000);
+
+await page.goto(base + '/');
+await caption('The start page also explains how to open the map of an organization');
+const orgLink = page.getByRole('link', { name: `/scan?org=${org}` });
+await highlight(orgLink);
+await pause(3500);
+await orgLink.click();
+await page.waitForURL(/org=/);
+await caption(`The map of an organization: a section for each repository with skills (analyzing JetBrains took ${warmSeconds}s before this recording)`);
+await pause(3500);
+await scroll(4000, 120);
+await pause(1000);
+await scrollToTop();
+await pause(1500);
+
+await caption('Filter and grouping work across all repositories; repositories without matching skills are hidden');
+const orgFilter = page.getByRole('searchbox');
+await highlight(orgFilter);
+await orgFilter.click();
+await orgFilter.pressSequentially('gradle', { delay: 180 });
+await pause(600);
+await page.keyboard.press('Enter');
+await page.waitForURL(/filter=gradle/);
+await pause(2500);
+const orgGroup = page.getByLabel('Group similar skills');
+await highlight(orgGroup);
+await pause(1200);
+await orgGroup.click();
+await page.waitForURL(/group=on/);
+await pause(3000);
+await scroll(1500, 50);
+await pause(2500);
 await scrollToTop();
 await pause(3000);
 
