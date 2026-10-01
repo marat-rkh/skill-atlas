@@ -185,8 +185,8 @@ func TestSkillMapGroups(t *testing.T) {
 		{name: "pdf"},
 	}}
 
-	if got, want := m.groups(false), []skillGroup{{skills: m.skills}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("groups(false) =\n%+v\nwant\n%+v", got, want)
+	if got, want := m.groups(false, nil), []skillGroup{{skills: m.skills}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(false, nil) =\n%+v\nwant\n%+v", got, want)
 	}
 	want := []skillGroup{
 		{label: "analysis-api", skills: []skill{{name: "analysis-api-create-issue"}, {name: "analysis-api-mark-apis"}}},
@@ -194,15 +194,15 @@ func TestSkillMapGroups(t *testing.T) {
 		{label: "git", skills: []skill{{name: "git"}, {name: "git-commit"}}},
 		{label: "Other", skills: []skill{{name: "docx"}, {name: "pdf"}}},
 	}
-	if got := m.groups(true); !reflect.DeepEqual(got, want) {
-		t.Errorf("groups(true) =\n%+v\nwant\n%+v", got, want)
+	if got := m.groups(true, nil); !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(true, nil) =\n%+v\nwant\n%+v", got, want)
 	}
 }
 
 func TestSkillMapGroupsWithoutSkills(t *testing.T) {
 	for _, grouping := range []bool{false, true} {
-		if got := (skillMap{}).groups(grouping); got != nil {
-			t.Errorf("groups(%v) = %+v; want none", grouping, got)
+		if got := (skillMap{}).groups(grouping, nil); got != nil {
+			t.Errorf("groups(%v, nil) = %+v; want none", grouping, got)
 		}
 	}
 }
@@ -210,8 +210,56 @@ func TestSkillMapGroupsWithoutSkills(t *testing.T) {
 func TestSkillMapGroupsWithoutSharedFirstWords(t *testing.T) {
 	m := skillMap{skills: []skill{{name: "debug"}, {name: "review-code"}}}
 	want := []skillGroup{{label: "Other", skills: m.skills}}
-	if got := m.groups(true); !reflect.DeepEqual(got, want) {
-		t.Errorf("groups(true) =\n%+v\nwant\n%+v", got, want)
+	if got := m.groups(true, nil); !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(true, nil) =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+func TestSkillMapGroupsWithStarredSkills(t *testing.T) {
+	createIssue := skill{name: "analysis-api-create-issue", path: "skills/create-issue"}
+	markAPIs := skill{name: "analysis-api-mark-apis", path: "skills/mark-apis"}
+	bumpGradle := skill{name: "build-bump-gradle", path: "skills/bump-gradle"}
+	bumpAPI := skill{name: "build-tools-bump-api", path: "skills/bump-api"}
+	docx := skill{name: "docx", path: "skills/docx"}
+	git := skill{name: "git", path: "skills/git"}
+	gitCommit := skill{name: "git-commit", path: "skills/git-commit"}
+	pdfA := skill{name: "pdf", path: "a/pdf"}
+	pdfB := skill{name: "pdf", path: "b/pdf"}
+	xlsx := skill{name: "xlsx", path: "skills/xlsx"}
+	m := skillMap{skills: []skill{createIssue, markAPIs, bumpGradle, bumpAPI, docx, git, gitCommit, pdfA, pdfB, xlsx}}
+	// Stars belong to paths, so only one of the pdf skills is starred. The star of a skill that is gone is ignored.
+	starred := map[string]bool{markAPIs.path: true, docx.path: true, git.path: true, gitCommit.path: true, pdfB.path: true,
+		"skills/removed": true}
+
+	want := []skillGroup{{skills: []skill{markAPIs, docx, git, gitCommit, pdfB, createIssue, bumpGradle, bumpAPI, pdfA, xlsx}}}
+	if got := m.groups(false, starred); !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(false, starred) =\n%+v\nwant\n%+v", got, want)
+	}
+	// The other groups keep the labels they have without stars, and the git group, whose skills are all starred, is gone.
+	want = []skillGroup{
+		{label: "Starred", skills: []skill{markAPIs, docx, git, gitCommit, pdfB}},
+		{label: "analysis-api", skills: []skill{createIssue}},
+		{label: "build", skills: []skill{bumpGradle, bumpAPI}},
+		{label: "pdf", skills: []skill{pdfA}},
+		{label: "Other", skills: []skill{xlsx}},
+	}
+	if got := m.groups(true, starred); !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(true, starred) =\n%+v\nwant\n%+v", got, want)
+	}
+	if !reflect.DeepEqual(m.skills, []skill{createIssue, markAPIs, bumpGradle, bumpAPI, docx, git, gitCommit, pdfA, pdfB, xlsx}) {
+		t.Errorf("groups() changed the map's skills: %+v", m.skills)
+	}
+}
+
+func TestSkillMapGroupsWithAllSkillsStarred(t *testing.T) {
+	m := skillMap{skills: []skill{{name: "git", path: "git"}, {name: "git-commit", path: "git-commit"}, {name: "pdf", path: "pdf"}}}
+	starred := map[string]bool{"git": true, "git-commit": true, "pdf": true}
+
+	if got, want := m.groups(false, starred), []skillGroup{{skills: m.skills}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(false, starred) =\n%+v\nwant\n%+v", got, want)
+	}
+	if got, want := m.groups(true, starred), []skillGroup{{label: "Starred", skills: m.skills}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("groups(true, starred) =\n%+v\nwant\n%+v", got, want)
 	}
 }
 

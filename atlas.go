@@ -127,16 +127,42 @@ func count(n int, singular, plural string) string {
 	return fmt.Sprintf("%d %s", n, plural)
 }
 
-// groups arranges the skills for presentation. Without grouping, they form a single group with no label.
-func (m skillMap) groups(grouping bool) []skillGroup {
+// groups arranges the skills for presentation. Without grouping, they form a single group with no label. Skills whose
+// paths are in starred come first: without grouping, they lead the single group, and with grouping, they form the
+// "Starred" group before all others.
+func (m skillMap) groups(grouping bool, starred map[string]bool) []skillGroup {
 	if len(m.skills) == 0 {
 		return nil
 	}
+	var starredSkills, otherSkills []skill
+	for _, s := range m.skills {
+		if starred[s.path] {
+			starredSkills = append(starredSkills, s)
+		} else {
+			otherSkills = append(otherSkills, s)
+		}
+	}
 	if !grouping {
-		return []skillGroup{{skills: m.skills}}
+		return []skillGroup{{skills: append(starredSkills, otherSkills...)}}
 	}
 
-	// Skills are grouped by the first word of their names and labeled with the leading words they all share.
+	var groups []skillGroup
+	if len(starredSkills) > 0 {
+		groups = append(groups, skillGroup{label: "Starred", skills: starredSkills})
+	}
+	// The other groups are formed from all skills, so starring a skill doesn't change them.
+	for _, group := range m.similarGroups() {
+		group.skills = slices.DeleteFunc(group.skills, func(s skill) bool { return starred[s.path] })
+		if len(group.skills) > 0 {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+// similarGroups groups the skills by the first word of their names and labels each group with the leading words its
+// names share. Skills that share their first word with no other skill come last, in the "Other" group.
+func (m skillMap) similarGroups() []skillGroup {
 	byFirstWord := map[string][]skill{}
 	for _, s := range m.skills {
 		first, _, _ := strings.Cut(s.name, "-")

@@ -14,6 +14,8 @@
     li { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid #ccc; }
     li p { margin: 0.25rem 0 0; }
     code, .summary { font-family: ui-monospace, monospace; }
+    .star { font: inherit; font-size: 1.2em; line-height: 1; padding: 0 0.1em; border: 0; background: none; color: #888; cursor: pointer; }
+    .star[name="unstar"], .star:hover, .star:focus-visible { color: #c58f00; }
     .error { color: #b00020; white-space: pre-wrap; }
   </style>
 </head>
@@ -36,6 +38,15 @@
   <button type="submit">Filter</button>
   <label><input type="checkbox" name="group"{{if .Grouping}} checked{{end}} onchange="this.form.submit()"> Group similar skills</label>
 </form>
+{{- if .Repo}}
+<form id="stars" action="/star" method="post">
+  <input type="hidden" name="repo" value="{{.Repo}}">
+  <input type="hidden" name="filter" value="{{.Filter}}">
+  {{- if .Grouping}}
+  <input type="hidden" name="group" value="on">
+  {{- end}}
+</form>
+{{- end}}
 {{- if .Filter}}
 <p class="matches">{{.MatchCount}}</p>
 {{- end}}
@@ -51,7 +62,7 @@
   {{- end}}
   <ul>
   {{- range .Skills}}
-    <li><strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+    {{template "skill" .}}
   {{- end}}
   </ul>
 </section>
@@ -59,6 +70,14 @@
 {{- range .Repos}}
 <section class="repo">
   <h2>{{.Summary}}</h2>
+  <form id="{{.Form}}" action="/star" method="post">
+    <input type="hidden" name="repo" value="{{.Repo}}">
+    <input type="hidden" name="org" value="{{$.Org}}">
+    <input type="hidden" name="filter" value="{{$.Filter}}">
+    {{- if $.Grouping}}
+    <input type="hidden" name="group" value="on">
+    {{- end}}
+  </form>
   {{- range .Groups}}
   <section>
     {{- with .Label}}
@@ -66,7 +85,7 @@
     {{- end}}
     <ul>
     {{- range .Skills}}
-      <li><strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+      {{template "skill" .}}
     {{- end}}
     </ul>
   </section>
@@ -82,3 +101,8 @@ Analyzing a large organization can take a minute or more.</p>
 {{- end}}
 </body>
 </html>
+{{define "skill"}}<li>
+  {{- if .Starred}}<button class="star" form="{{.Form}}" name="unstar" value="{{.Path}}" title="Unstar" aria-label="Unstar {{.Name}}">★</button>
+  {{- else}}<button class="star" form="{{.Form}}" name="star" value="{{.Path}}" title="Star" aria-label="Star {{.Name}}">☆</button>
+  {{- end}} <strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+{{- end -}}
