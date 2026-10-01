@@ -65,8 +65,9 @@ parameters are given, or the repository (or organization) cannot be analyzed, th
 map. Errors for repositories of an organization that could not be analyzed are shown above the map.
 
 The server keeps each map it builds for 5 minutes. Opening the same map again within that time, e.g. with another
-filter or with grouping changed, shows it without analyzing the repository or organization again. The map of an
-organization with repositories that could not be analyzed is not kept, so that opening it again retries them.
+filter, with grouping changed or after a star was clicked, shows it without analyzing the repository or organization
+again. The map of an organization with repositories that could not be analyzed is not kept, so that opening it again
+retries them.
 
 ### Filter
 
@@ -90,6 +91,27 @@ The map page has a "Group similar skills" checkbox, unchecked by default. Checki
 enabled; unchecking it shows the single list again. The choice is kept in the page URL as `&group=on`, so a grouped map
 can be opened directly, e.g. `http://127.0.0.1:8080/scan?repo=https://github.com/JetBrains/kotlin&group=on`.
 Grouping and the filter can be combined: changing one keeps the other.
+
+### Stars
+
+Each skill on the map page has a star button: an empty star (☆) stars the skill, and a filled one (★) unstars it.
+Clicking it reloads the page with the same filter and grouping.
+
+- Starred skills are shown first. Without grouping, they lead the list; with grouping, they form a "Starred" group
+  before all other groups. Starred skills and the other skills are each sorted by name.
+- Groups are formed from all skills, so starring a skill does not change the other groups: starring
+  `analysis-api-mark-internal-apis` leaves `analysis-api-create-cherry-pick-issue` in the `analysis-api` group.
+- The filter applies to starred skills too, and a "Starred" group with no matching skills is hidden.
+- A star belongs to a skill directory in a repository, so skills with the same name in different directories are
+  starred separately. Repository owners and names are compared ignoring case, as on GitHub.
+- On the map of an organization, each repository's starred skills come first in that repository's section (with
+  grouping, in its own "Starred" group), and a star shown there is the same as on the repository's own map. Clicking it
+  reloads the organization's map.
+- Stars are saved in `skill-atlas/stars.json` in the user's configuration directory (e.g. `~/.config` on Linux,
+  `~/Library/Application Support` on macOS), so they are kept when the server restarts.
+- Other websites cannot change stars: the server rejects star requests sent from their pages.
+
+Stars apply to the web interface only; the CLI always prints the map without them.
 
 # Technologies
 

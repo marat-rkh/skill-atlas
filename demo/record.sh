@@ -33,7 +33,10 @@ echo "Recording the CLI..."
 vhs cli.tape
 
 echo "Recording the web interface..."
-skill-atlas serve > "$out/serve.log" 2>&1 &
+# The server gets a home of its own, so the demo starts without stars and leaves the user's stars alone.
+rm -rf "$out/home"
+mkdir -p "$out/home"
+HOME="$out/home" XDG_CONFIG_HOME="$out/home/.config" skill-atlas serve > "$out/serve.log" 2>&1 &
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
 for _ in $(seq 50); do

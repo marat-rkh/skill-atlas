@@ -20,11 +20,7 @@ func main() {
 // runCLI runs the tool with the given arguments and returns the process exit code.
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "serve" {
-		listener, err := net.Listen("tcp", serveAddress)
-		if err == nil {
-			err = serve(listener, stdout)
-		}
-		fmt.Fprintf(stderr, "error: %v\n", err)
+		fmt.Fprintf(stderr, "error: %v\n", runServer(stdout))
 		return 1
 	}
 
@@ -59,6 +55,21 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprint(stdout, renderMap(m, grouping))
 	return 0
+}
+
+// runServer serves the web interface at serveAddress, with the stars saved in the user's configuration directory, until
+// it fails.
+func runServer(stdout io.Writer) error {
+	listener, err := net.Listen("tcp", serveAddress)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	stars, err := openUserStarStore()
+	if err != nil {
+		return err
+	}
+	return serve(listener, stdout, stars)
 }
 
 // printOrgMap prints the organization's map to stdout, and then an error to stderr for each repository that could not

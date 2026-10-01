@@ -119,6 +119,45 @@ await pause(1000);
 await scrollToTop();
 await pause(3000);
 
+// Clicking a star reloads the page, so wait for the button of the new state to appear. The button is looked up within
+// scope, e.g. a repository's section of an organization's map, where other repositories can have skills of that name.
+const toggleStar = async (action, name, scope = page) => {
+  const button = scope.getByRole('button', { name: `${action} ${name}`, exact: true });
+  await button.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  await pause(1500);
+  await highlight(button);
+  await pause(1000);
+  await button.click();
+  await scope.getByRole('button', { name: `${action === 'Star' ? 'Unstar' : 'Star'} ${name}`, exact: true }).waitFor();
+};
+
+await caption('Stars: ☆ stars a skill. Starred skills are shown first, in the "Starred" group when grouping is on');
+await toggleStar('Star', 'playwright');
+await pause(3500);
+
+await caption('The other groups stay as they were: gh-address-comments is still in the gh group');
+await toggleStar('Star', 'gh-fix-ci');
+await pause(2500);
+const ghGroup = page.locator('section').filter({ has: page.getByRole('heading', { name: 'gh', exact: true }) });
+await ghGroup.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+await pause(1200);
+await highlight(ghGroup);
+await pause(3500);
+await scrollToTop();
+await pause(1500);
+
+await caption('Without grouping, starred skills lead the list');
+const ungroup = page.getByLabel('Group similar skills');
+await highlight(ungroup);
+await pause(1200);
+await ungroup.click();
+await page.waitForURL((url) => !url.searchParams.has('group'));
+await pause(4000);
+
+await caption('★ unstars a skill. Stars are saved, so they are kept when the server restarts');
+await toggleStar('Unstar', 'playwright');
+await pause(3500);
+
 await page.goto(base + '/');
 await caption('The start page also explains how to open the map of an organization');
 const orgLink = page.getByRole('link', { name: `/scan?org=${org}` });
@@ -152,6 +191,15 @@ await scroll(1500, 50);
 await pause(2500);
 await scrollToTop();
 await pause(3000);
+
+await caption("Stars work on an organization's map too: each repository's starred skills come first in its section");
+const kotlinSection = page.locator('section.repo').filter({ has: page.getByRole('heading', { name: /^JetBrains\/kotlin / }) });
+await toggleStar('Star', 'build-bump-gradle-version', kotlinSection);
+await pause(2000);
+await highlight(kotlinSection.getByRole('heading', { name: 'Starred', exact: true }));
+await pause(4000);
+await scrollToTop();
+await pause(2000);
 
 const video = page.video();
 await context.close();
