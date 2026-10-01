@@ -11,6 +11,8 @@
     li { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid #ccc; }
     li p { margin: 0.25rem 0 0; }
     code, .summary { font-family: ui-monospace, monospace; }
+    .star { font: inherit; font-size: 1.2em; line-height: 1; padding: 0 0.1em; border: 0; background: none; color: #888; cursor: pointer; }
+    .star[name="unstar"], .star:hover, .star:focus-visible { color: #c58f00; }
     .error { color: #b00020; white-space: pre-wrap; }
   </style>
 </head>
@@ -24,6 +26,13 @@
   <label>Filter <input type="search" name="filter" value="{{.Filter}}"></label>
   <button type="submit">Filter</button>
   <label><input type="checkbox" name="group"{{if .Grouping}} checked{{end}} onchange="this.form.submit()"> Group similar skills</label>
+</form>
+<form id="stars" action="/star" method="post">
+  <input type="hidden" name="repo" value="{{.Repo}}">
+  <input type="hidden" name="filter" value="{{.Filter}}">
+  {{- if .Grouping}}
+  <input type="hidden" name="group" value="on">
+  {{- end}}
 </form>
 {{- if .Filter}}
 <p class="matches">{{.MatchCount}}</p>
@@ -40,7 +49,10 @@
   {{- end}}
   <ul>
   {{- range .Skills}}
-    <li><strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+    <li>
+      {{- if .Starred}}<button class="star" form="stars" name="unstar" value="{{.Path}}" title="Unstar" aria-label="Unstar {{.Name}}">★</button>
+      {{- else}}<button class="star" form="stars" name="star" value="{{.Path}}" title="Star" aria-label="Star {{.Name}}">☆</button>
+      {{- end}} <strong>{{.Name}}</strong><p>{{.Description}}</p></li>
   {{- end}}
   </ul>
 </section>

@@ -111,6 +111,44 @@ await pause(1000);
 await scrollToTop();
 await pause(3000);
 
+// Clicking a star reloads the page, so wait for the button of the new state to appear.
+const toggleStar = async (action, name) => {
+  const button = page.getByRole('button', { name: `${action} ${name}`, exact: true });
+  await button.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  await pause(1500);
+  await highlight(button);
+  await pause(1000);
+  await button.click();
+  await page.getByRole('button', { name: `${action === 'Star' ? 'Unstar' : 'Star'} ${name}`, exact: true }).waitFor();
+};
+
+await caption('Stars: ☆ stars a skill. Starred skills are shown first, in the "Starred" group when grouping is on');
+await toggleStar('Star', 'playwright');
+await pause(3500);
+
+await caption('The other groups stay as they were: gh-address-comments is still in the gh group');
+await toggleStar('Star', 'gh-fix-ci');
+await pause(2500);
+const ghGroup = page.locator('section').filter({ has: page.getByRole('heading', { name: 'gh', exact: true }) });
+await ghGroup.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+await pause(1200);
+await highlight(ghGroup);
+await pause(3500);
+await scrollToTop();
+await pause(1500);
+
+await caption('Without grouping, starred skills lead the list');
+const ungroup = page.getByLabel('Group similar skills');
+await highlight(ungroup);
+await pause(1200);
+await ungroup.click();
+await page.waitForURL((url) => !url.searchParams.has('group'));
+await pause(4000);
+
+await caption('★ unstars a skill. Stars are saved, so they are kept when the server restarts');
+await toggleStar('Unstar', 'playwright');
+await pause(3500);
+
 const video = page.video();
 await context.close();
 await browser.close();
