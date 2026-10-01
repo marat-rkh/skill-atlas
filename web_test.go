@@ -26,16 +26,42 @@ var exampleMap = skillMap{
 	},
 }
 
-// fakeScanner returns a fixed result and records which repositories were requested.
+var jetbrains = githubOrg{"JetBrains"}
+
+var exampleOrgMap = orgMap{
+	org:       jetbrains,
+	repoCount: 5,
+	maps: []skillMap{
+		{repo: githubRepo{"JetBrains", "Exposed"}, branch: "main", commit: "abcdef0123456789", skills: []skill{
+			{name: "alpha-sql", description: "Writes SQL."},
+			{name: "dao", description: "Works with DAOs."},
+		}},
+		exampleMap,
+	},
+}
+
+// fakeScanner returns fixed results and records which repositories and organizations were requested.
 type fakeScanner struct {
-	m         skillMap
-	err       error
-	requested []githubRepo
+	m             skillMap
+	org           orgMap
+	err           error
+	requested     []githubRepo
+	requestedOrgs []githubOrg
 }
 
 func (f *fakeScanner) scan(repo githubRepo) (skillMap, error) {
 	f.requested = append(f.requested, repo)
 	return f.m, f.err
+}
+
+func (f *fakeScanner) scanOrg(org githubOrg) (orgMap, error) {
+	f.requestedOrgs = append(f.requestedOrgs, org)
+	return f.org, f.err
+}
+
+// handler returns the web handler with the scanner's results.
+func (f *fakeScanner) handler() http.Handler {
+	return newWebHandler(f.scan, f.scanOrg)
 }
 
 // get sends a GET request for target to handler and returns the response.
@@ -62,13 +88,15 @@ func assertInOrder(t *testing.T, body string, parts ...string) {
 
 const usageHint = "Open <code>/scan?repo=&lt;github-repository-url&gt;</code>"
 
+const orgUsageHint = "Open <code>/scan?org=&lt;github-organization-url&gt;</code>"
+
 const filterForm = `<form action="/scan" method="get" role="search">`
 
 // groupingCheckbox is the start of the grouping checkbox, which is in the filter form.
 const groupingCheckbox = `<label><input type="checkbox" name="group"`
 
 func TestStartPage(t *testing.T) {
-	response := get(t, newWebHandler((&fakeScanner{}).scan), "/")
+	response := get(t, (&fakeScanner{}).handler(), "/")
 
 	if response.Code != http.StatusOK {
 		t.Errorf("status = %d; want 200", response.Code)
@@ -80,18 +108,20 @@ func TestStartPage(t *testing.T) {
 		"<title>Skill Atlas</title>",
 		usageHint,
 		`<a href="/scan?repo=https://github.com/JetBrains/kotlin">`,
+		orgUsageHint,
+		`<a href="/scan?org=https://github.com/JetBrains">`,
 	)
 }
 
 func TestUnknownPageIsNotFound(t *testing.T) {
-	if response := get(t, newWebHandler((&fakeScanner{}).scan), "/missing"); response.Code != http.StatusNotFound {
+	if response := get(t, (&fakeScanner{}).handler(), "/missing"); response.Code != http.StatusNotFound {
 		t.Errorf("status = %d; want 404", response.Code)
 	}
 }
 
 func TestScanPageShowsMap(t *testing.T) {
 	scanner := &fakeScanner{m: exampleMap}
-	response := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin")
+	response := get(t, scanner.handler(), "/scan?repo=https://github.com/JetBrains/kotlin")
 
 	if response.Code != http.StatusOK {
 		t.Errorf("status = %d; want 200", response.Code)
@@ -123,7 +153,7 @@ func TestScanPageShowsMap(t *testing.T) {
 
 func TestScanPageGroupsSimilarSkills(t *testing.T) {
 	scanner := &fakeScanner{m: exampleMap}
-	response := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin&group=on")
+	response := get(t, scanner.handler(), "/scan?repo=https://github.com/JetBrains/kotlin&group=on")
 
 	if response.Code != http.StatusOK {
 		t.Errorf("status = %d; want 200", response.Code)
@@ -154,7 +184,7 @@ func TestScanPageAcceptsRepositoryURLForms(t *testing.T) {
 		"/scan?other=1&repo=https://github.com/JetBrains/kotlin",
 	} {
 		scanner := &fakeScanner{m: exampleMap}
-		response := get(t, newWebHandler(scanner.scan), target)
+		response := get(t, scanner.handler(), target)
 		if response.Code != http.StatusOK || !slices.Equal(scanner.requested, []githubRepo{kotlin}) {
 			t.Errorf("GET %s: status %d, scanned %v; want 200 and [%v]", target, response.Code, scanner.requested, kotlin)
 		}
@@ -163,7 +193,7 @@ func TestScanPageAcceptsRepositoryURLForms(t *testing.T) {
 
 func TestScanPageWithoutSkills(t *testing.T) {
 	scanner := &fakeScanner{m: skillMap{repo: kotlin, branch: "master", commit: "c823f9e0123456789"}}
-	response := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin")
+	response := get(t, scanner.handler(), "/scan?repo=https://github.com/JetBrains/kotlin")
 
 	if response.Code != http.StatusOK {
 		t.Errorf("status = %d; want 200", response.Code)
@@ -198,7 +228,7 @@ func TestScanPageFiltersSkills(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(tt.filter) + tt.group
-			response := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target)
+			response := get(t, (&fakeScanner{m: exampleMap}).handler(), target)
 
 			if response.Code != http.StatusOK {
 				t.Errorf("status = %d; want 200", response.Code)
@@ -227,7 +257,7 @@ func TestScanPageFiltersSkills(t *testing.T) {
 func TestScanPageWithEmptyFilterShowsWholeMap(t *testing.T) {
 	for _, filter := range []string{"", "%20%20"} {
 		target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + filter
-		body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+		body := get(t, (&fakeScanner{m: exampleMap}).handler(), target).Body.String()
 
 		assertInOrder(t, body, `<input type="search" name="filter" value="">`,
 			"<strong>alpha-one</strong>", "<strong>alpha-two</strong>", "<strong>root-skill</strong>")
@@ -241,7 +271,7 @@ func TestScanPageWithEmptyFilterShowsWholeMap(t *testing.T) {
 
 func TestScanPageFilterWithoutSkills(t *testing.T) {
 	scanner := &fakeScanner{m: skillMap{repo: kotlin, branch: "master", commit: "c823f9e0123456789"}}
-	body := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin&filter=x").Body.String()
+	body := get(t, scanner.handler(), "/scan?repo=https://github.com/JetBrains/kotlin&filter=x").Body.String()
 
 	assertInOrder(t, body, filterForm, `<p class="matches">0 of 0 skills match &#34;x&#34;</p>`, "<p>No SKILL.md files found.</p>")
 	if strings.Contains(body, "No skills match") {
@@ -253,7 +283,7 @@ func TestScanPageFilterFormKeepsRepository(t *testing.T) {
 	// The form must submit the scanned repository, even if it was requested in another URL form.
 	for _, repo := range []string{"git@github.com:JetBrains/kotlin.git", "https://github.com/JetBrains/kotlin/tree/master/compiler"} {
 		target := "/scan?repo=" + url.QueryEscape(repo) + "&filter=alpha"
-		body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+		body := get(t, (&fakeScanner{m: exampleMap}).handler(), target).Body.String()
 		assertInOrder(t, body, filterForm,
 			`<input type="hidden" name="repo" value="https://github.com/JetBrains/kotlin">`,
 			`<input type="search" name="filter" value="alpha">`,
@@ -264,7 +294,7 @@ func TestScanPageFilterFormKeepsRepository(t *testing.T) {
 }
 
 func TestScanPageFormKeepsFilterAndGrouping(t *testing.T) {
-	body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan),
+	body := get(t, (&fakeScanner{m: exampleMap}).handler(),
 		"/scan?repo=https://github.com/JetBrains/kotlin&filter=alpha&group=on").Body.String()
 	assertInOrder(t, body, filterForm,
 		`<input type="search" name="filter" value="alpha">`,
@@ -276,7 +306,7 @@ func TestScanPageFormKeepsFilterAndGrouping(t *testing.T) {
 
 func TestScanPageEscapesFilter(t *testing.T) {
 	target := "/scan?repo=https://github.com/JetBrains/kotlin&filter=" + url.QueryEscape(`"><script>alert(1)</script>`)
-	body := get(t, newWebHandler((&fakeScanner{m: exampleMap}).scan), target).Body.String()
+	body := get(t, (&fakeScanner{m: exampleMap}).handler(), target).Body.String()
 
 	assertInOrder(t, body,
 		`<input type="search" name="filter" value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;">`,
@@ -310,7 +340,7 @@ func TestScanPageEscapesRepositoryContent(t *testing.T) {
 		{name: "<b>name</b>-1", description: "<script>alert(1)</script>"},
 		{name: "<b>name</b>-2"},
 	}}}
-	body := get(t, newWebHandler(scanner.scan), "/scan?repo=github.com/JetBrains/kotlin&group=on").Body.String()
+	body := get(t, scanner.handler(), "/scan?repo=github.com/JetBrains/kotlin&group=on").Body.String()
 
 	assertInOrder(t, body,
 		"<h2>&lt;b&gt;name&lt;/b&gt;</h2>",
@@ -324,14 +354,14 @@ func TestScanPageEscapesRepositoryContent(t *testing.T) {
 
 func TestScanPageRejectsInvalidRepository(t *testing.T) {
 	tests := []struct{ target, message string }{
-		{"/scan", "Missing the repo parameter."},
-		{"/scan?repo=", "Missing the repo parameter."},
+		{"/scan", "Missing the repo or org parameter."},
+		{"/scan?repo=", "Missing the repo or org parameter."},
 		{"/scan?repo=https://gitlab.com/owner/repo", "Not a GitHub repository URL: https://gitlab.com/owner/repo"},
 		{"/scan?repo=%3Cb%3E", "Not a GitHub repository URL: &lt;b&gt;"},
 	}
 	for _, tt := range tests {
 		scanner := &fakeScanner{m: exampleMap}
-		response := get(t, newWebHandler(scanner.scan), tt.target)
+		response := get(t, scanner.handler(), tt.target)
 		if response.Code != http.StatusBadRequest {
 			t.Errorf("GET %s: status = %d; want 400", tt.target, response.Code)
 		}
@@ -344,7 +374,7 @@ func TestScanPageRejectsInvalidRepository(t *testing.T) {
 
 func TestScanPageReportsScanErrors(t *testing.T) {
 	scanner := &fakeScanner{err: errors.New("cannot access https://github.com/JetBrains/kotlin\ngit ls-remote failed: <fatal>")}
-	response := get(t, newWebHandler(scanner.scan), "/scan?repo=https://github.com/JetBrains/kotlin")
+	response := get(t, scanner.handler(), "/scan?repo=https://github.com/JetBrains/kotlin")
 
 	if response.Code != http.StatusBadGateway {
 		t.Errorf("status = %d; want 502", response.Code)
@@ -358,7 +388,7 @@ func TestScanPageReportsScanErrors(t *testing.T) {
 func TestScanPageRequiresGet(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/scan?repo=https://github.com/JetBrains/kotlin", nil)
-	newWebHandler((&fakeScanner{m: exampleMap}).scan).ServeHTTP(recorder, request)
+	(&fakeScanner{m: exampleMap}).handler().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST status = %d; want 405", recorder.Code)
 	}
@@ -370,7 +400,7 @@ func TestScanPageOfLocalRepository(t *testing.T) {
 		".claude/skills/debug/SKILL.md":  "---\nname: debug\n---\n",
 	})
 	scan := func(repo githubRepo) (skillMap, error) { return scanRemote(repo, remote) }
-	response := get(t, newWebHandler(scan), "/scan?repo=https://github.com/owner/repo")
+	response := get(t, newWebHandler(scan, (&fakeScanner{}).scanOrg), "/scan?repo=https://github.com/owner/repo")
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d; want 200:\n%s", response.Code, response.Body.String())
@@ -382,7 +412,7 @@ func TestScanPageOfLocalRepository(t *testing.T) {
 		"<li><strong>review</strong><p>Reviews a pull request.</p></li>",
 	)
 
-	response = get(t, newWebHandler(scan), "/scan?repo=https://github.com/owner/repo&filter=pull")
+	response = get(t, newWebHandler(scan, (&fakeScanner{}).scanOrg), "/scan?repo=https://github.com/owner/repo&filter=pull")
 	body := response.Body.String()
 	assertInOrder(t, body, `<p class="matches">1 of 2 skills matches &#34;pull&#34;</p>`,
 		"<li><strong>review</strong><p>Reviews a pull request.</p></li>")
@@ -434,7 +464,7 @@ func TestScanPageOfGitHubRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip("needs access to github.com")
 	}
-	server := httptest.NewServer(newWebHandler(scanRepository))
+	server := httptest.NewServer(newWebHandler(scanRepository, scanOrganization))
 	defer server.Close()
 
 	response, err := http.Get(server.URL + "/scan?repo=https://github.com/JetBrains/kotlin")
@@ -447,4 +477,254 @@ func TestScanPageOfGitHubRepository(t *testing.T) {
 		t.Fatalf("status = %d:\n%s", response.StatusCode, body)
 	}
 	assertInOrder(t, string(body), `<p class="summary">JetBrains/kotlin · `, filterForm, groupingCheckbox, "<li><strong>")
+}
+
+func TestScanPageShowsOrganizationMap(t *testing.T) {
+	scanner := &fakeScanner{org: exampleOrgMap}
+	response := get(t, scanner.handler(), "/scan?org=https://github.com/JetBrains")
+
+	if response.Code != http.StatusOK {
+		t.Errorf("status = %d; want 200", response.Code)
+	}
+	if !slices.Equal(scanner.requestedOrgs, []githubOrg{jetbrains}) || len(scanner.requested) != 0 {
+		t.Errorf("scanned %v and %v; want only [%v]", scanner.requestedOrgs, scanner.requested, jetbrains)
+	}
+	body := response.Body.String()
+	assertInOrder(t, body,
+		"<title>JetBrains · 5 repositories · 2 with skills · 5 skills · Skill Atlas</title>",
+		`<p class="summary">JetBrains · 5 repositories · 2 with skills · 5 skills</p>`,
+		filterForm,
+		`<input type="hidden" name="org" value="https://github.com/JetBrains">`,
+		`<input type="search" name="filter" value="">`,
+		groupingCheckbox+` onchange="this.form.submit()"> Group similar skills</label>`,
+		"</form>",
+		`<section class="repo">`+"\n  <h2>JetBrains/Exposed · main @ abcdef0 · 2 skills</h2>\n  <section>\n    <ul>",
+		"<li><strong>alpha-sql</strong><p>Writes SQL.</p></li>",
+		"<li><strong>dao</strong><p>Works with DAOs.</p></li>",
+		"</ul>\n  </section>\n</section>",
+		`<section class="repo">`+"\n  <h2>JetBrains/kotlin · master @ c823f9e · 3 skills</h2>",
+		"<li><strong>alpha-one</strong><p>Does alpha things.</p></li>",
+		"<li><strong>alpha-two</strong><p>(no description)</p></li>",
+		"<li><strong>root-skill</strong><p>At the root.</p></li>",
+		"</section>\n</body>",
+	)
+	for _, unexpected := range []string{`name="repo"`, "<h3>", "No SKILL.md files found.", "No skills match", `class="matches"`, orgUsageHint, `class="error"`} {
+		if strings.Contains(body, unexpected) {
+			t.Errorf("page contains %q:\n%s", unexpected, body)
+		}
+	}
+}
+
+func TestScanPageGroupsOrganizationSkills(t *testing.T) {
+	response := get(t, (&fakeScanner{org: exampleOrgMap}).handler(), "/scan?org=https://github.com/JetBrains&group=on")
+
+	if response.Code != http.StatusOK {
+		t.Errorf("status = %d; want 200", response.Code)
+	}
+	// Skills are grouped within each repository.
+	assertInOrder(t, response.Body.String(),
+		groupingCheckbox+` checked onchange="this.form.submit()"> Group similar skills</label>`,
+		"<h2>JetBrains/Exposed · main @ abcdef0 · 2 skills</h2>",
+		"<h3>Other</h3>",
+		"<li><strong>alpha-sql</strong><p>Writes SQL.</p></li>",
+		"<li><strong>dao</strong><p>Works with DAOs.</p></li>",
+		"<h2>JetBrains/kotlin · master @ c823f9e · 3 skills</h2>",
+		"<h3>alpha</h3>",
+		"<li><strong>alpha-one</strong><p>Does alpha things.</p></li>",
+		"<li><strong>alpha-two</strong><p>(no description)</p></li>",
+		"<h3>Other</h3>",
+		"<li><strong>root-skill</strong><p>At the root.</p></li>",
+	)
+}
+
+func TestScanPageFiltersOrganizationSkills(t *testing.T) {
+	tests := []struct {
+		name, filter, group, matchCount string
+		shown, hidden                   []string
+	}{
+		{"in several repositories", "ALPHA", "", `3 of 5 skills match "ALPHA"`,
+			[]string{"<h2>JetBrains/Exposed", "<strong>alpha-sql</strong>", "<h2>JetBrains/kotlin", "<strong>alpha-one</strong>", "<strong>alpha-two</strong>"},
+			[]string{"<strong>dao</strong>", "<strong>root-skill</strong>"}},
+		{"hiding repositories without matches", "dao", "&group=on", `1 of 5 skills matches "dao"`,
+			[]string{"<h2>JetBrains/Exposed", "<h3>Other</h3>", "<strong>dao</strong>"},
+			[]string{"<h2>JetBrains/kotlin", "<strong>alpha-sql</strong>", "<strong>alpha-one</strong>"}},
+		{"with no matches", "nothing", "", `0 of 5 skills match "nothing"`,
+			[]string{"<p>No skills match the filter.</p>"},
+			[]string{"<h2>", "<strong>"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := "/scan?org=https://github.com/JetBrains&filter=" + url.QueryEscape(tt.filter) + tt.group
+			body := get(t, (&fakeScanner{org: exampleOrgMap}).handler(), target).Body.String()
+
+			assertInOrder(t, body,
+				`<p class="summary">JetBrains · 5 repositories · 2 with skills · 5 skills</p>`,
+				`<input type="hidden" name="org" value="https://github.com/JetBrains">`,
+				`<input type="search" name="filter" value="`+tt.filter+`">`,
+				`<p class="matches">`+strings.ReplaceAll(tt.matchCount, `"`, "&#34;")+"</p>",
+			)
+			assertInOrder(t, body, tt.shown...)
+			for _, hidden := range tt.hidden {
+				if strings.Contains(body, hidden) {
+					t.Errorf("page contains %q:\n%s", hidden, body)
+				}
+			}
+			if tt.matchCount[0] != '0' && strings.Contains(body, "No skills match") {
+				t.Errorf("page says no skills match:\n%s", body)
+			}
+		})
+	}
+}
+
+func TestScanPageOfOrganizationWithoutSkills(t *testing.T) {
+	scanner := &fakeScanner{org: orgMap{org: jetbrains, repoCount: 3}}
+	body := get(t, scanner.handler(), "/scan?org=https://github.com/JetBrains&filter=x").Body.String()
+
+	assertInOrder(t, body,
+		`<p class="summary">JetBrains · 3 repositories · 0 with skills · 0 skills</p>`,
+		`<p class="matches">0 of 0 skills match &#34;x&#34;</p>`,
+		"<p>No SKILL.md files found.</p>",
+	)
+	if strings.Contains(body, "No skills match") {
+		t.Errorf("page says no skills match:\n%s", body)
+	}
+}
+
+func TestScanPageAcceptsOrganizationURLForms(t *testing.T) {
+	for _, target := range []string{
+		"/scan?org=https://github.com/JetBrains",
+		"/scan?org=https%3A%2F%2Fgithub.com%2FJetBrains",
+		"/scan?org=https://github.com/JetBrains/",
+		"/scan?org=https://github.com/JetBrains%3Ftab%3Drepositories",
+		"/scan?org=https://github.com/orgs/JetBrains/repositories",
+		"/scan?org=github.com/JetBrains",
+		"/scan?repo=&org=https://github.com/JetBrains",
+	} {
+		scanner := &fakeScanner{org: exampleOrgMap}
+		response := get(t, scanner.handler(), target)
+		if response.Code != http.StatusOK || !slices.Equal(scanner.requestedOrgs, []githubOrg{jetbrains}) {
+			t.Errorf("GET %s: status %d, scanned %v; want 200 and [%v]", target, response.Code, scanner.requestedOrgs, jetbrains)
+		}
+	}
+}
+
+func TestScanPageFormKeepsOrganization(t *testing.T) {
+	// The form must submit the scanned organization, even if it was requested in another URL form.
+	target := "/scan?org=" + url.QueryEscape("https://github.com/orgs/JetBrains/repositories") + "&filter=alpha&group=on"
+	body := get(t, (&fakeScanner{org: exampleOrgMap}).handler(), target).Body.String()
+	assertInOrder(t, body, filterForm,
+		`<input type="hidden" name="org" value="https://github.com/JetBrains">`,
+		`<input type="search" name="filter" value="alpha">`,
+		groupingCheckbox+` checked onchange="this.form.submit()"> Group similar skills</label>`,
+		"</form>",
+	)
+}
+
+func TestScanPageShowsOrganizationFailures(t *testing.T) {
+	m := exampleOrgMap
+	m.failures = []error{
+		errors.New("JetBrains/a: cannot access https://github.com/JetBrains/a (repository not found or private)\ngit ls-remote failed: <fatal>"),
+		errors.New("JetBrains/b: git fetch failed: fatal"),
+	}
+	response := get(t, (&fakeScanner{org: m}).handler(), "/scan?org=https://github.com/JetBrains")
+
+	// The map of the other repositories is still shown.
+	if response.Code != http.StatusOK {
+		t.Errorf("status = %d; want 200", response.Code)
+	}
+	assertInOrder(t, response.Body.String(),
+		"<p class=\"error\">JetBrains/a: cannot access https://github.com/JetBrains/a (repository not found or private)\ngit ls-remote failed: &lt;fatal&gt;</p>",
+		`<p class="error">JetBrains/b: git fetch failed: fatal</p>`,
+		`<p class="summary">JetBrains · 5 repositories · 2 with skills · 5 skills</p>`,
+		"<h2>JetBrains/Exposed · main @ abcdef0 · 2 skills</h2>",
+		"<h2>JetBrains/kotlin · master @ c823f9e · 3 skills</h2>",
+	)
+}
+
+func TestScanPageRejectsInvalidOrganization(t *testing.T) {
+	tests := []struct{ target, message string }{
+		{"/scan?org=https://github.com/JetBrains/kotlin", "Not a GitHub organization URL: https://github.com/JetBrains/kotlin"},
+		{"/scan?org=https://gitlab.com/JetBrains", "Not a GitHub organization URL: https://gitlab.com/JetBrains"},
+		{"/scan?org=%3Cb%3E", "Not a GitHub organization URL: &lt;b&gt;"},
+		{"/scan?org=https://github.com/JetBrains&repo=https://github.com/JetBrains/kotlin", "Pass either the repo or the org parameter, not both."},
+		{"/scan?repo=https://github.com/JetBrains", "Not a GitHub repository URL: https://github.com/JetBrains"},
+	}
+	for _, tt := range tests {
+		scanner := &fakeScanner{m: exampleMap, org: exampleOrgMap}
+		response := get(t, scanner.handler(), tt.target)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("GET %s: status = %d; want 400", tt.target, response.Code)
+		}
+		if len(scanner.requested) != 0 || len(scanner.requestedOrgs) != 0 {
+			t.Errorf("GET %s: scanned %v and %v; want no scan", tt.target, scanner.requested, scanner.requestedOrgs)
+		}
+		assertInOrder(t, response.Body.String(), `<p class="error">`+tt.message+"</p>", usageHint, orgUsageHint)
+	}
+}
+
+func TestScanPageReportsOrganizationScanErrors(t *testing.T) {
+	scanner := &fakeScanner{err: errors.New("cannot access https://github.com/JetBrains (organization or user not found)")}
+	response := get(t, scanner.handler(), "/scan?org=https://github.com/JetBrains")
+
+	if response.Code != http.StatusBadGateway {
+		t.Errorf("status = %d; want 502", response.Code)
+	}
+	assertInOrder(t, response.Body.String(),
+		`<p class="error">cannot access https://github.com/JetBrains (organization or user not found)</p>`,
+		usageHint,
+	)
+}
+
+func TestScanPageOfLocalOrganization(t *testing.T) {
+	review, _ := newRemote(t, map[string]string{".claude/skills/review/SKILL.md": "---\nname: review\ndescription: Reviews a pull request.\n---\n"})
+	tools, commit := newRemote(t, map[string]string{"debug/SKILL.md": "---\nname: debug\n---\n"})
+	remotes := map[string]string{"review": review, "tools": tools}
+	api := newFakeGitHubAPI(t, "owner", `[{"name": "tools"}, {"name": "review"}, {"name": "fork", "fork": true}]`)
+	scanOrg := func(org githubOrg) (orgMap, error) {
+		return scanOrganizationAt(api.URL, org, func(repo githubRepo) string { return remotes[repo.name] })
+	}
+	handler := newWebHandler((&fakeScanner{}).scan, scanOrg)
+
+	response := get(t, handler, "/scan?org=https://github.com/owner")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200:\n%s", response.Code, response.Body.String())
+	}
+	assertInOrder(t, response.Body.String(),
+		`<p class="summary">owner · 2 repositories · 2 with skills · 2 skills</p>`,
+		`<input type="hidden" name="org" value="https://github.com/owner">`,
+		"<h2>owner/review · main @ ",
+		"<li><strong>review</strong><p>Reviews a pull request.</p></li>",
+		"<h2>owner/tools · main @ "+commit[:7]+" · 1 skill</h2>",
+		"<li><strong>debug</strong><p>(no description)</p></li>",
+	)
+
+	body := get(t, handler, "/scan?org=https://github.com/owner&filter=pull").Body.String()
+	assertInOrder(t, body, `<p class="matches">1 of 2 skills matches &#34;pull&#34;</p>`,
+		"<li><strong>review</strong><p>Reviews a pull request.</p></li>")
+	if strings.Contains(body, "owner/tools") {
+		t.Errorf("filtered page contains the tools repository:\n%s", body)
+	}
+}
+
+func TestScanPageOfGitHubOrganization(t *testing.T) {
+	if testing.Short() {
+		t.Skip("needs access to github.com")
+	}
+	server := httptest.NewServer(newWebHandler(scanRepository, scanOrganization))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/scan?org=https://github.com/anthropics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d:\n%s", response.StatusCode, body)
+	}
+	assertInOrder(t, string(body), `<p class="summary">anthropics · `, filterForm, groupingCheckbox,
+		`<section class="repo">`+"\n  <h2>anthropics/", "<li><strong>")
+	if strings.Contains(string(body), `class="error"`) {
+		t.Errorf("page reports errors:\n%s", body)
+	}
 }

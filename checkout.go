@@ -29,6 +29,9 @@ func (c *repoCheckout) close() {
 	os.RemoveAll(c.dir)
 }
 
+// errEmptyRepository is reported for a repository without commits, which has no skills.
+var errEmptyRepository = errors.New("repository is empty")
+
 // checkoutSkillFiles fetches the latest commit of the remote's default branch without file contents, finds every
 // SKILL.md in its tree, and then downloads just those files. This keeps huge repositories cheap to analyze.
 func checkoutSkillFiles(remote string) (_ *repoCheckout, err error) {
@@ -53,12 +56,18 @@ func checkoutSkillFiles(remote string) (_ *repoCheckout, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot access %s (repository not found or private)\n%w", strings.TrimSuffix(remote, ".git"), err)
 	}
-	branch := ""
+	// The output is "ref: refs/heads/<branch>\tHEAD" if HEAD is a branch, and then "<commit>\tHEAD" unless the
+	// repository is empty.
+	branch, hasCommit := "", false
 	for _, line := range strings.Split(head, "\n") {
 		if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
 			branch, _, _ = strings.Cut(ref, "\t")
-			break
+		} else if strings.HasSuffix(line, "\tHEAD") && !strings.HasPrefix(line, "ref: ") {
+			hasCommit = true
 		}
+	}
+	if !hasCommit {
+		return nil, fmt.Errorf("cannot analyze %s (%w)", strings.TrimSuffix(remote, ".git"), errEmptyRepository)
 	}
 
 	if _, err = git("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", "HEAD"); err != nil {

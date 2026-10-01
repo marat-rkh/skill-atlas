@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -78,6 +79,73 @@ func TestRenderMapOfLocalRepository(t *testing.T) {
 		"    Reviews a pull request.\n"
 	if got := renderMap(m, false); got != want {
 		t.Errorf("map =\n%s\nwant\n%s", got, want)
+	}
+}
+
+var textOrgMap = orgMap{
+	org:       githubOrg{"owner"},
+	repoCount: 4,
+	maps: []skillMap{
+		textMap,
+		{repo: githubRepo{"owner", "tools"}, branch: "dev", commit: "abcdef0123456789", skills: []skill{{name: "debug", description: "Finds bugs."}}},
+	},
+	failures: []error{errors.New("owner/broken: git fetch failed")},
+}
+
+func TestRenderOrgMap(t *testing.T) {
+	want := "owner · 4 repositories · 2 with skills · 4 skills\n" +
+		"\n" +
+		"owner/repo · main @ 0123456 · 3 skills\n" +
+		"\n" +
+		"├── analysis-api-a\n" +
+		"│   " + words(19) + "\n" +
+		"│   " + words(11) + "\n" +
+		"├── analysis-api-b\n" +
+		"│   (no description)\n" +
+		"└── root-skill\n" +
+		"    At the root.\n" +
+		"\n" +
+		"owner/tools · dev @ abcdef0 · 1 skill\n" +
+		"\n" +
+		"└── debug\n" +
+		"    Finds bugs.\n"
+	if got := renderOrgMap(textOrgMap, false); got != want {
+		t.Errorf("renderOrgMap() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRenderOrgMapWithGrouping(t *testing.T) {
+	want := "owner · 4 repositories · 2 with skills · 4 skills\n" +
+		"\n" +
+		"owner/repo · main @ 0123456 · 3 skills\n" +
+		"\n" +
+		"analysis-api\n" +
+		"├── analysis-api-a\n" +
+		"│   " + words(19) + "\n" +
+		"│   " + words(11) + "\n" +
+		"└── analysis-api-b\n" +
+		"    (no description)\n" +
+		"\n" +
+		"Other\n" +
+		"└── root-skill\n" +
+		"    At the root.\n" +
+		"\n" +
+		"owner/tools · dev @ abcdef0 · 1 skill\n" +
+		"\n" +
+		"Other\n" +
+		"└── debug\n" +
+		"    Finds bugs.\n"
+	if got := renderOrgMap(textOrgMap, true); got != want {
+		t.Errorf("renderOrgMap() =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestRenderOrgMapWithoutSkills(t *testing.T) {
+	for _, grouping := range []bool{false, true} {
+		got := renderOrgMap(orgMap{org: githubOrg{"owner"}, repoCount: 2}, grouping)
+		if want := "owner · 2 repositories · 0 with skills · 0 skills\n\nNo SKILL.md files found.\n"; got != want {
+			t.Errorf("renderOrgMap(grouping: %v) = %q; want %q", grouping, got, want)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -85,6 +86,19 @@ func TestCheckoutSkillFilesReportsInaccessibleRepository(t *testing.T) {
 	}
 }
 
+func TestCheckoutSkillFilesReportsEmptyRepository(t *testing.T) {
+	remote := newEmptyRemote(t)
+
+	checkout, err := checkoutSkillFiles(remote)
+	if err == nil {
+		checkout.close()
+		t.Fatal("checkoutSkillFiles() succeeded for an empty repository")
+	}
+	if want := "cannot analyze " + remote + " (repository is empty)"; !errors.Is(err, errEmptyRepository) || err.Error() != want {
+		t.Errorf("error = %q; want %q", err, want)
+	}
+}
+
 func TestSparsePattern(t *testing.T) {
 	tests := []struct{ path, want string }{
 		{"skills/pdf/SKILL.md", "/skills/pdf/SKILL.md"},
@@ -132,6 +146,16 @@ func newRemote(t *testing.T, files map[string]string) (url, commit string) {
 	git("config", "uploadpack.allowFilter", "true")
 	git("config", "uploadpack.allowAnySHA1InWant", "true")
 	return "file://" + filepath.ToSlash(dir), git("rev-parse", "HEAD")
+}
+
+// newEmptyRemote creates a new local repository without commits and returns its URL.
+func newEmptyRemote(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	return "file://" + filepath.ToSlash(dir)
 }
 
 // checkedOutFiles lists the files in a working tree, excluding .git, as sorted slash-separated relative paths.

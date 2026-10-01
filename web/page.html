@@ -6,7 +6,10 @@
   <title>{{with .Summary}}{{.}} · {{end}}Skill Atlas</title>
   <style>
     body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
-    h2 { font-family: ui-monospace, monospace; font-size: 1.1rem; margin-top: 2rem; }
+    h2, h3 { font-family: ui-monospace, monospace; font-size: 1.1rem; margin-top: 2rem; }
+    h3 { font-size: 1rem; margin-top: 1.5rem; }
+    .repo { margin-top: 2rem; border-top: 1px solid #ccc; }
+    .repo h2 { margin-top: 1rem; }
     ul { list-style: none; padding: 0; }
     li { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid #ccc; }
     li p { margin: 0.25rem 0 0; }
@@ -17,10 +20,18 @@
 <body>
 <h1>Skill Atlas</h1>
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{- range .Failures}}
+<p class="error">{{.}}</p>
+{{- end}}
 {{- if .Summary}}
 <p class="summary">{{.Summary}}</p>
 <form action="/scan" method="get" role="search">
-  <input type="hidden" name="repo" value="{{.Repo}}">
+  {{- with .Repo}}
+  <input type="hidden" name="repo" value="{{.}}">
+  {{- end}}
+  {{- with .Org}}
+  <input type="hidden" name="org" value="{{.}}">
+  {{- end}}
   <label>Filter <input type="search" name="filter" value="{{.Filter}}"></label>
   <button type="submit">Filter</button>
   <label><input type="checkbox" name="group"{{if .Grouping}} checked{{end}} onchange="this.form.submit()"> Group similar skills</label>
@@ -30,7 +41,7 @@
 {{- end}}
 {{- if not .Total}}
 <p>No SKILL.md files found.</p>
-{{- else if not .Groups}}
+{{- else if not .Matches}}
 <p>No skills match the filter.</p>
 {{- end}}
 {{- range .Groups}}
@@ -45,9 +56,29 @@
   </ul>
 </section>
 {{- end}}
+{{- range .Repos}}
+<section class="repo">
+  <h2>{{.Summary}}</h2>
+  {{- range .Groups}}
+  <section>
+    {{- with .Label}}
+    <h3>{{.}}</h3>
+    {{- end}}
+    <ul>
+    {{- range .Skills}}
+      <li><strong>{{.Name}}</strong><p>{{.Description}}</p></li>
+    {{- end}}
+    </ul>
+  </section>
+  {{- end}}
+</section>
+{{- end}}
 {{- else}}
 <p>Open <code>/scan?repo=&lt;github-repository-url&gt;</code> to see the map of a repository's agent skills, for example
 <a href="/scan?repo=https://github.com/JetBrains/kotlin">/scan?repo=https://github.com/JetBrains/kotlin</a>.</p>
+<p>Open <code>/scan?org=&lt;github-organization-url&gt;</code> to see the map of the agent skills in an organization's
+repositories, for example <a href="/scan?org=https://github.com/JetBrains">/scan?org=https://github.com/JetBrains</a>.
+Analyzing a large organization can take a minute or more.</p>
 {{- end}}
 </body>
 </html>
