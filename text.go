@@ -32,6 +32,20 @@ func renderMap(m skillMap, grouping bool) string {
 	return b.String()
 }
 
+// renderOrgMap renders the organization's map as text for the terminal: a summary line, followed by the map of each
+// repository with skills as renderMap renders it.
+func renderOrgMap(m orgMap, grouping bool) string {
+	var b strings.Builder
+	b.WriteString(m.summary() + "\n")
+	if len(m.maps) == 0 {
+		b.WriteString("\nNo SKILL.md files found.\n")
+	}
+	for _, repo := range m.maps {
+		b.WriteString("\n" + renderMap(repo, grouping))
+	}
+	return b.String()
+}
+
 func wrap(text string, width int) []string {
 	var lines []string
 	line := ""

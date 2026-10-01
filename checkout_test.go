@@ -1,13 +1,16 @@
 package main
 
 import (
+	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCheckoutSkillFiles(t *testing.T) {
@@ -85,6 +88,45 @@ func TestCheckoutSkillFilesReportsInaccessibleRepository(t *testing.T) {
 	}
 }
 
+func TestCheckoutSkillFilesGivesUpOnStalledRemote(t *testing.T) {
+	// The kernel accepts connections to the listener, but nothing ever responds, like a stalled connection to GitHub.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	defer func(timeout time.Duration) { gitTimeout = timeout }(gitTimeout)
+	gitTimeout = time.Second
+	remote := "http://" + listener.Addr().String() + "/owner/repo.git"
+
+	start := time.Now()
+	checkout, err := checkoutSkillFiles(remote)
+	if err == nil {
+		checkout.close()
+		t.Fatal("checkoutSkillFiles() succeeded for a stalled remote")
+	}
+	want := "cannot access http://" + listener.Addr().String() + "/owner/repo\ngit ls-remote timed out after 1s"
+	if !errors.Is(err, errGitTimeout) || err.Error() != want {
+		t.Errorf("error = %q; want %q", err, want)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("checkoutSkillFiles() returned after %v; want soon after the timeout of 1s", elapsed)
+	}
+}
+
+func TestCheckoutSkillFilesReportsEmptyRepository(t *testing.T) {
+	remote := newEmptyRemote(t)
+
+	checkout, err := checkoutSkillFiles(remote)
+	if err == nil {
+		checkout.close()
+		t.Fatal("checkoutSkillFiles() succeeded for an empty repository")
+	}
+	if want := "cannot analyze " + remote + " (repository is empty)"; !errors.Is(err, errEmptyRepository) || err.Error() != want {
+		t.Errorf("error = %q; want %q", err, want)
+	}
+}
+
 func TestSparsePattern(t *testing.T) {
 	tests := []struct{ path, want string }{
 		{"skills/pdf/SKILL.md", "/skills/pdf/SKILL.md"},
@@ -132,6 +174,16 @@ func newRemote(t *testing.T, files map[string]string) (url, commit string) {
 	git("config", "uploadpack.allowFilter", "true")
 	git("config", "uploadpack.allowAnySHA1InWant", "true")
 	return "file://" + filepath.ToSlash(dir), git("rev-parse", "HEAD")
+}
+
+// newEmptyRemote creates a new local repository without commits and returns its URL.
+func newEmptyRemote(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	return "file://" + filepath.ToSlash(dir)
 }
 
 // checkedOutFiles lists the files in a working tree, excluding .git, as sorted slash-separated relative paths.

@@ -9,7 +9,8 @@ import (
 
 const usage = `Usage:
   skill-atlas <github-repository-url>           print the map of the repository's agent skills
-  skill-atlas --group <github-repository-url>   print the map with similar skills grouped
+  skill-atlas <github-organization-url>         print the map of the agent skills in the organization's repositories
+  skill-atlas --group <github-url>              print the map with similar skills grouped
   skill-atlas serve                             start the web interface at http://` + serveAddress
 
 func main() {
@@ -27,10 +28,20 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if grouping {
 		args = args[1:]
 	}
-	repo, ok := githubRepo{}, false
-	if len(args) == 1 {
-		repo, ok = parseGitHubRepo(args[0])
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, usage)
+		return 2
 	}
+	if org, ok := parseGitHubOrg(args[0]); ok {
+		fmt.Fprintf(stderr, "Analyzing %s ...\n", org.webURL())
+		m, err := scanOrganization(org)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		return printOrgMap(m, grouping, stdout, stderr)
+	}
+	repo, ok := parseGitHubRepo(args[0])
 	if !ok {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -59,4 +70,17 @@ func runServer(stdout io.Writer) error {
 		return err
 	}
 	return serve(listener, stdout, stars)
+}
+
+// printOrgMap prints the organization's map to stdout, and then an error to stderr for each repository that could not
+// be analyzed. It returns the exit code: 1 if some repositories could not be analyzed, 0 otherwise.
+func printOrgMap(m orgMap, grouping bool, stdout, stderr io.Writer) int {
+	fmt.Fprint(stdout, renderOrgMap(m, grouping))
+	for _, failure := range m.failures {
+		fmt.Fprintf(stderr, "error: %v\n", failure)
+	}
+	if len(m.failures) > 0 {
+		return 1
+	}
+	return 0
 }
