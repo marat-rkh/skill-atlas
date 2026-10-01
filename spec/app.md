@@ -5,7 +5,9 @@ The map can be presented in the terminal (CLI) or in a web browser (web interfac
 
 # Input
 
-Any GitHub repository URL.
+Any GitHub repository URL, or a GitHub organization URL, e.g. `https://github.com/JetBrains` or
+`https://github.com/orgs/JetBrains/repositories`, to analyze all repositories of the organization. The URL of a user
+works the same way, for the user's repositories.
 
 # Output
 
@@ -17,6 +19,23 @@ The group is labeled with the leading words that all its names share, e.g. `anal
 `analysis-api-create-cherry-pick-issue` and `analysis-api-mark-internal-apis`. Groups are sorted by label and skills
 within a group by name. Skills that share their first word with no other skill are listed last, under "Other".
 
+## Organizations
+
+The map of an organization starts with a summary of how many repositories were analyzed, how many of them have skills,
+and how many skills they have in total, e.g. `JetBrains · 683 repositories · 26 with skills · 412 skills`. It is
+followed by the map of each repository that has skills, as it would be shown for that repository alone, sorted by
+repository name ignoring case. With grouping enabled, skills are grouped within each repository.
+
+- The organization's public repositories are listed with the GitHub REST API. Forks are skipped, since their skills
+  usually come from the upstream repository. Archived repositories are analyzed like any other.
+- Repositories are analyzed in parallel. An empty repository has no skills.
+- If some repositories cannot be analyzed, the map of the others is still shown, along with an error for each
+  repository that failed. If the organization cannot be found or its repositories cannot be listed, an error is shown
+  instead of the map.
+- Without authentication, the GitHub API allows 60 requests per hour, and each request lists up to 100 repositories.
+  If the `GITHUB_TOKEN` environment variable is set, the requests are authenticated with it, which raises the limit.
+  When the limit is exceeded, the error says when to try again.
+
 # Presentation
 
 Both presentation options show the same map; they differ only in how it is displayed.
@@ -24,7 +43,11 @@ Both presentation options show the same map; they differ only in how it is displ
 ## CLI
 
 `skill-atlas <github-repository-url>` prints the map to the terminal.
-`skill-atlas --group <github-repository-url>` prints it with grouping enabled.
+`skill-atlas <github-organization-url>` prints the map of an organization.
+`skill-atlas --group <github-url>` prints either map with grouping enabled.
+
+For an organization, an error for each repository that could not be analyzed is printed after the map, and the exit
+status is 1 if there are such errors.
 
 ## Web interface
 
@@ -33,8 +56,14 @@ The server accepts connections from the local machine only.
 
 The repository URL is passed as a query parameter: opening `/scan?repo=<github-repository-url>` shows the map for that
 repository, e.g. `http://127.0.0.1:8080/scan?repo=https://github.com/JetBrains/kotlin`.
-The start page `/` explains how to do this. If the parameter is not a GitHub repository URL, or the repository cannot
-be analyzed, the page shows an error instead of the map.
+Likewise, `/scan?org=<github-organization-url>` shows the map of an organization, e.g.
+`http://127.0.0.1:8080/scan?org=https://github.com/JetBrains`; each repository's map has its own heading.
+The start page `/` explains how to do this. If the parameter is not a GitHub repository URL (or organization URL), both
+parameters are given, or the repository (or organization) cannot be analyzed, the page shows an error instead of the
+map. Errors for repositories of an organization that could not be analyzed are shown above the map.
+
+The server keeps each map it builds for 5 minutes. Opening the same map again within that time, e.g. with another
+filter or with grouping changed, shows it without analyzing the repository or organization again.
 
 ### Filter
 
@@ -45,7 +74,8 @@ The field shows the current filter text.
 - A skill matches if its name or description contains the filter text, ignoring case. Leading and trailing whitespace
   in the filter is ignored.
 - Only matching skills are shown; groups with no matching skills are hidden.
-- The page shows how many of the repository's skills match, e.g. `2 of 6 skills match "test"`.
+- The page shows how many of the repository's skills match, e.g. `2 of 6 skills match "test"`. For an organization,
+  the count covers the skills of all its repositories, and repositories with no matching skills are hidden.
 - If no skills match, the page says so instead of showing groups.
 - An empty or missing filter shows the whole map.
 
@@ -62,4 +92,5 @@ Grouping and the filter can be combined: changing one keeps the other.
 
 - Go, standard library only.
 - The `git` command-line tool, used at runtime to fetch repositories.
+- The GitHub REST API, used to list the repositories of an organization.
 - The web interface uses Go's `net/http` and `html/template`; its page assets are embedded in the binary.
