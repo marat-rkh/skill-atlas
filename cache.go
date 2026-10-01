@@ -6,10 +6,12 @@ import (
 	"time"
 )
 
-// cached wraps scan so that its result for a key is kept for lifetime, measured with now from the end of the scan.
-// Calls for that key within that time reuse the result, and calls while the scan is still running wait for it.
-// Failed scans are not kept.
-func cached[K comparable, V any](scan func(K) (V, error), lifetime time.Duration, now func() time.Time) func(K) (V, error) {
+// cached wraps scan so that its result for a key is kept for lifetime, measured with now from the end of the scan, if
+// keep accepts it. Calls for that key within that time reuse the result, and calls while the scan is still running
+// wait for it. Failed scans are not kept.
+func cached[K comparable, V any](
+	scan func(K) (V, error), keep func(V) bool, lifetime time.Duration, now func() time.Time,
+) func(K) (V, error) {
 	type entry struct {
 		done    chan struct{} // closed when the scan has finished
 		value   V
@@ -22,8 +24,9 @@ func cached[K comparable, V any](scan func(K) (V, error), lifetime time.Duration
 	run := func(key K, e *entry) {
 		e.err = errors.New("the scan failed unexpectedly") // kept only if scan panics
 		defer func() {
+			kept := e.err == nil && keep(e.value)
 			mu.Lock()
-			if e.err != nil {
+			if !kept {
 				delete(entries, key)
 			} else {
 				e.expires = now().Add(lifetime)

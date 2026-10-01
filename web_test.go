@@ -641,6 +641,39 @@ func TestScanPageShowsOrganizationFailures(t *testing.T) {
 	)
 }
 
+func TestCachingWebHandlerKeepsMaps(t *testing.T) {
+	partial := exampleOrgMap
+	partial.failures = []error{errors.New("JetBrains/a: git fetch failed: fatal")}
+	tests := []struct {
+		name     string
+		org      orgMap
+		orgScans int
+	}{
+		{"complete organization", exampleOrgMap, 1},
+		// Opening the map of an organization with failed repositories again retries them.
+		{"organization with failed repositories", partial, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scanner := &fakeScanner{m: exampleMap, org: tt.org}
+			handler := newCachingWebHandler(scanner.scan, scanner.scanOrg)
+			for _, target := range []string{"/scan?repo=https://github.com/JetBrains/kotlin", "/scan?org=https://github.com/JetBrains"} {
+				for _, options := range []string{"", "&filter=alpha", "&group=on"} {
+					if response := get(t, handler, target+options); response.Code != http.StatusOK {
+						t.Errorf("GET %s = %d; want 200", target+options, response.Code)
+					}
+				}
+			}
+			if len(scanner.requested) != 1 {
+				t.Errorf("scanned the repository %d times; want 1", len(scanner.requested))
+			}
+			if len(scanner.requestedOrgs) != tt.orgScans {
+				t.Errorf("scanned the organization %d times; want %d", len(scanner.requestedOrgs), tt.orgScans)
+			}
+		})
+	}
+}
+
 func TestScanPageRejectsInvalidOrganization(t *testing.T) {
 	tests := []struct{ target, message string }{
 		{"/scan?org=https://github.com/JetBrains/kotlin", "Not a GitHub organization URL: https://github.com/JetBrains/kotlin"},

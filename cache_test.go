@@ -17,11 +17,13 @@ func (c *countingScan) scan(key string) (string, error) {
 	return key + strconv.Itoa(int(c.calls.Add(1))), nil
 }
 
+func keepAll(string) bool { return true }
+
 func TestCachedReusesResults(t *testing.T) {
 	start := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	clock := start
 	counter := &countingScan{}
-	scan := cached(counter.scan, 5*time.Minute, func() time.Time { return clock })
+	scan := cached(counter.scan, keepAll, 5*time.Minute, func() time.Time { return clock })
 
 	for _, step := range []struct {
 		at        time.Duration // since start
@@ -54,7 +56,7 @@ func TestCachedDoesNotKeepFailures(t *testing.T) {
 			return "", errors.New("unavailable")
 		}
 		return "ok", nil
-	}, time.Minute, time.Now)
+	}, keepAll, time.Minute, time.Now)
 
 	if _, err := scan("a"); err == nil || err.Error() != "unavailable" {
 		t.Errorf("first scan error = %v; want unavailable", err)
@@ -69,6 +71,18 @@ func TestCachedDoesNotKeepFailures(t *testing.T) {
 	}
 }
 
+func TestCachedKeepsOnlyAcceptedResults(t *testing.T) {
+	counter := &countingScan{}
+	scan := cached(counter.scan, func(value string) bool { return value != "a1" }, time.Minute, time.Now)
+
+	// The result of the first scan is not accepted, so the second call scans again; its result is kept.
+	for _, want := range []string{"a1", "a2", "a2"} {
+		if got, err := scan("a"); got != want || err != nil {
+			t.Errorf("scan() = %q, %v; want %q", got, err, want)
+		}
+	}
+}
+
 func TestCachedSharesRunningScan(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	calls := atomic.Int32{}
@@ -77,7 +91,7 @@ func TestCachedSharesRunningScan(t *testing.T) {
 		close(started)
 		<-release
 		return "done", nil
-	}, time.Minute, time.Now)
+	}, keepAll, time.Minute, time.Now)
 
 	results := make(chan string, 2)
 	go func() { got, _ := scan("a"); results <- got }()
@@ -108,7 +122,7 @@ func TestCachedRecoversFromPanickedScan(t *testing.T) {
 			panic("bug")
 		}
 		return "ok", nil
-	}, time.Minute, time.Now)
+	}, keepAll, time.Minute, time.Now)
 
 	func() {
 		defer func() {

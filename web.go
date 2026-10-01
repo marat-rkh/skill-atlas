@@ -27,9 +27,16 @@ var pageTemplate = template.Must(template.ParseFS(webFiles, "web/page.html"))
 // serve prints the address of listener and serves the web interface on it until the listener fails or is closed.
 func serve(listener net.Listener, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "Serving Skill Atlas at http://%s\n", listener.Addr())
-	scanRepo := cached(scanRepository, mapLifetime, time.Now)
-	scanOrg := cached(scanOrganization, mapLifetime, time.Now)
-	return http.Serve(listener, newWebHandler(scanRepo, scanOrg))
+	return http.Serve(listener, newCachingWebHandler(scanRepository, scanOrganization))
+}
+
+// newCachingWebHandler is newWebHandler that keeps the maps built by scanRepo and scanOrg for mapLifetime. The map of
+// an organization with repositories that could not be analyzed is not kept, so that opening it again retries them.
+func newCachingWebHandler(scanRepo func(githubRepo) (skillMap, error), scanOrg func(githubOrg) (orgMap, error)) http.Handler {
+	return newWebHandler(
+		cached(scanRepo, func(skillMap) bool { return true }, mapLifetime, time.Now),
+		cached(scanOrg, func(m orgMap) bool { return len(m.failures) == 0 }, mapLifetime, time.Now),
+	)
 }
 
 // newWebHandler serves the start page at /, repository maps at /scan?repo=<github-repository-url>, built by scanRepo,

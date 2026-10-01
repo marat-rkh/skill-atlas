@@ -65,7 +65,8 @@ parameters are given, or the repository (or organization) cannot be analyzed, th
 map. Errors for repositories of an organization that could not be analyzed are shown above the map.
 
 The server keeps each map it builds for 5 minutes. Opening the same map again within that time, e.g. with another
-filter or with grouping changed, shows it without analyzing the repository or organization again.
+filter or with grouping changed, shows it without analyzing the repository or organization again. The map of an
+organization with repositories that could not be analyzed is not kept, so that opening it again retries them.
 
 ### Filter
 
