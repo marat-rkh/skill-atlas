@@ -3,7 +3,7 @@
 - **When:** 2026-10-01, from 08:28
 - **Where:** a cloud machine (Linux, 4 cores), on the `organizations` branch
 - **Transcript:** `29e1d2d4-8f4c-4943-967e-08cff44275eb`
-- **Result:** a PR that closes issue #4
+- **Result:** PR #7, which closes issue #4
 
 ## What happened
 
@@ -37,7 +37,7 @@
   where each skill lives (an open point from earlier sessions).
 - **`org` as a separate web parameter**, so `repo=` keeps meaning a repository and the URL reads well.
 - **The cache was added with this feature:** without it, every filter change rescanned the organization (about 35s and
-  7 API requests, of 60 per hour without a token).
+  9 API requests, of 60 per hour without a token).
 
 ## Findings
 
